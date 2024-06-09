@@ -1,0 +1,79 @@
+# Model
+device: 0
+
+name: hugging_cache/llava-v1.5-7b
+model_name: llava
+model_class: LLaVA
+tokenizer_class: LlamaTokenizer
+tokenizer_name: hugging_cache/llava-v1.5-7b
+inner_params:
+- model.layers.29.mlp.down_proj.weight
+- model.layers.29.mlp.up_proj.weight
+- model.layers.30.mlp.down_proj.weight
+- model.layers.30.mlp.up_proj.weight
+- model.layers.31.mlp.down_proj.weight
+- model.layers.31.mlp.up_proj.weight
+
+# Method
+alg: MEND
+lr: 1e-6
+edit_lr: 1e-4
+lr_lr: 1e-4
+seed: 42
+cedit: 0.1
+iedit: 0.1
+cloc: 1.0
+cbase: 1.0
+dropout: 0.0
+train_base: False
+no_grad_layers: null
+one_sided: False
+n_hidden: 1
+hidden_dim: null
+init: id
+norm: True
+combine: True
+x_only: False
+delta_only: False
+act: relu
+rank: 1920
+mlp_class: IDMLP
+shared: True
+archive: results/models/MEND/llava
+
+# Train
+batch_size: 1
+model_save_pt: 5000
+silent: False
+#max_epochs: 1
+max_iters: 50000
+log_interval: 100
+eval_log_interval: 1000
+final_eval: True
+val_interval: 5000
+early_stop_patience: 5000
+early_stop_key: "loss/total_edit_val"
+eval_only: True
+half: False
+debug: False
+save: False
+verbose: True
+
+val_batch_size: 1
+accumulate_bs: 2
+val_steps: 500
+opt: Adam
+grad_clip: 100.
+
+# Output
+results_dir: ./results
+
+# Multimodal
+qformer_checkpoint: null
+qformer_name_or_path: null
+state_dict_file: null
+pretrained_ckpt: null
+
+# image
+coco_image: datasets/VLKEB_images/mmkb_images
+rephrase_image: datasets/VLKEB_images/mmkb_images

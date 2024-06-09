@@ -1,0 +1,21 @@
+alg_name: "IKE"
+name: hugging_cache/llava-v1.5-7b
+model_name: llava
+model_class: LLaVA
+tokenizer_class: LlamaTokenizer
+tokenizer_name: hugging_cache/llava-v1.5-7b
+sentence_model_name: hugging_cache/all-MiniLM-L6-v2
+device: 0
+results_dir: "./results"
+
+k: 32
+
+# Multimodal
+task_name: "caption"
+qformer_checkpoint: null
+qformer_name_or_path: null
+state_dict_file: null
+
+# image
+coco_image: datasets/VLKEB_images/mmkb_images
+rephrase_image: datasets/VLKEB_images/mmkb_images

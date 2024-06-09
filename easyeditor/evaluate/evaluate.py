@@ -1,0 +1,710 @@
+"""
+Contains evaluation utilities for pytorch-based rewriting methods.
+To use, simply call `compute_rewrite_quality_zsre` with the
+appropriate arguments, which returns a dictionary containing them.
+"""
+
+import typing
+from itertools import chain
+from typing import List, Optional
+
+import numpy as np
+import torch
+# from sklearn.feature_extraction.text import TfidfVectorizer
+from transformers import AutoTokenizer
+from ..util import HyperParams
+from .portability_evaluate import compute_portability_quality
+from .evaluate_utils import (
+    test_seq2seq_batch_prediction_acc, 
+    test_batch_prediction_acc, 
+    test_prediction_acc,
+    test_generation_quality, 
+    PPL,
+    kl_loc_loss,
+    es_sent
+)
+
+def compute_edit_quality(
+    model,
+    model_name,
+    hparams: HyperParams,
+    tok: AutoTokenizer,
+    record: typing.Dict,
+    device,
+    eval_metric: str = 'token_em',
+    test_generation = False
+) -> typing.Dict:
+    """
+    Given a rewritten model, computes generalization and specificity metrics for
+    the desired rewrite (passed in via the CounterFact dataset record). Returns a
+    dictionary containing those metrics.
+
+    :param model: Rewritten model
+    :param tok: Tokenizer
+    :param record: CounterFact dataset record
+    :paran snips: ???
+    :param vec: ???
+    :return: Dictionary containing rewriting metrics
+    """
+
+    # First, unpack rewrite evaluation record.
+    target_new, ground_truth = (
+        record[x] for x in ["target_new", "ground_truth"]
+    )
+
+    rewrite_prompts = record["prompt"]
+    rephrase_prompts = record["rephrase_prompt"] if 'rephrase_prompt' in record.keys() else None
+    ret = compute_rewrite_or_rephrase_quality(model, model_name, hparams, tok,
+                                              rewrite_prompts, target_new, device=device, eval_metric=eval_metric)
+
+    ret['locality'] = {}
+    ret['portability'] = {}
+    if rephrase_prompts is not None:
+        ret.update(
+            compute_rewrite_or_rephrase_quality(model, model_name, hparams, tok,
+                                                rephrase_prompts, target_new, device=device, test_rephrase=True, eval_metric=eval_metric)
+        )
+
+    if 'locality' in record.keys() and any(record['locality']):
+        for locality_key in record['locality'].keys():
+            ret['locality'].update(
+                compute_locality_quality(model, model_name, hparams, tok, locality_key,
+                                         record['locality'][locality_key]['prompt'],
+                                         record['locality'][locality_key]['ground_truth'], device=device)
+            )
+    if 'portability' in record.keys() and any(record['portability']):
+        for portability_key in record['portability'].keys():
+            ret['portability'].update(
+                compute_portability_quality(model, model_name, hparams, tok, portability_key,
+                                            record['portability'][portability_key]['prompt'],
+                                            record['portability'][portability_key]['ground_truth'], device=device)
+            )
+    if  test_generation:
+        ret['fluency'] = test_generation_quality(model=model,tok=tok,prefixes=rewrite_prompts if isinstance(rewrite_prompts,list) else [rewrite_prompts,], max_out_len=100)
+    return ret
+
+def compute_rewrite_or_rephrase_quality(
+    model,
+    model_name,
+    hparams: HyperParams,
+    tok: AutoTokenizer,
+    prompt: str,
+    target_new: str,
+    device,
+    test_rephrase: bool = False,
+    eval_metric: str = 'token_em'
+) -> typing.Dict:
+    
+    if not test_rephrase:
+        key = 'rewrite'
+    else:
+        key = 'rephrase'
+    if eval_metric == 'ppl':
+        ppl = PPL(model, tok, prompt, target_new, device)
+        ret = {
+            f"{key}_ppl": ppl
+        }
+    else:
+        if 't5' in model_name.lower():
+            acc = test_seq2seq_batch_prediction_acc(model, tok, hparams, prompt, target_new, device)
+        else:
+            acc = test_prediction_acc(model, tok, hparams, prompt, target_new, device)
+        ret = {
+            f"{key}_acc": acc
+        }
+    return ret
+
+def compute_locality_quality(
+    model,
+    model_name,
+    hparams: HyperParams,
+    tok: AutoTokenizer,
+    locality_key: str,
+    prompt: str,
+    locality_ground_truth: str,
+    device,
+) -> typing.Dict:
+
+    if 't5' in model_name.lower():
+        loc_tokens = test_seq2seq_batch_prediction_acc(model, tok, hparams, prompt, locality_ground_truth, device, locality=True)
+    else:
+        loc_tokens = test_prediction_acc(model, tok, hparams, prompt, locality_ground_truth, device, locality=True)
+
+    if type(loc_tokens) is not list:
+        loc_tokens = [loc_tokens,]
+
+    ret = {
+        f"{locality_key}_output": loc_tokens
+    }
+    return ret
+
+def compute_icl_edit_quality(
+    model,
+    model_name,
+    hparams: HyperParams,
+    tok: AutoTokenizer,
+    icl_examples,
+    record: typing.Dict,
+    device,
+    pre_edit: bool = False
+) -> typing.Dict:
+    """
+    Given a rewritten model, computes generalization and specificity metrics for
+    the desired rewrite (passed in via the CounterFact dataset record). Returns a
+    dictionary containing those metrics.
+
+    :param model: Rewritten model
+    :param tok: Tokenizer
+    :param record: CounterFact dataset record
+    :param snips: ???
+    :param vec: ???
+    :return: Dictionary containing rewriting metrics
+    """
+
+    # First, unpack rewrite evaluation record.
+    target_new, ground_truth = (
+        record[x] for x in ["target_new", "ground_truth"]
+    )
+    prompt = record["prompt"]
+    rephrase = record["rephrase_prompt"] if 'rephrase_prompt' in record.keys() else None
+    new_fact = f'New Fact: {prompt} {target_new}\nPrompt: {prompt}'
+
+    if pre_edit:
+        edit_acc = icl_lm_eval(model, model_name, hparams, tok, icl_examples,
+                                       target_new, prompt)
+    else:
+        edit_acc = icl_lm_eval(model, model_name, hparams, tok, icl_examples,
+                                              target_new, new_fact)
+    ret = {
+        f"rewrite_acc": edit_acc
+    }
+    ret['locality'] = {}
+    ret['portability'] = {}
+    if rephrase is not None:
+        rephrase_acc = icl_lm_eval(model, model_name, hparams, tok, icl_examples,
+                               target_new, f'New Fact: {prompt} {target_new}\nPrompt: {rephrase}')
+        ret['rephrase_acc'] = rephrase_acc
+
+    if 'locality' in record.keys() and any(record['locality']):
+        for locality_key in record['locality'].keys():
+            pre_neighbor = icl_lm_eval(model, model_name, hparams, tok, [''], record['locality'][locality_key]['ground_truth'],
+                                       f"New Fact: {prompt} {target_new}\nPrompt: {record['locality'][locality_key]['prompt']}", neighborhood=True)
+            post_neighbor = icl_lm_eval(model, model_name, hparams, tok, icl_examples, record['locality'][locality_key]['ground_truth'],
+                                        f"New Fact: {prompt} {target_new}\nPrompt: {record['locality'][locality_key]['prompt']}", neighborhood=True)
+            if type(pre_neighbor) is not list:
+                pre_neighbor = [pre_neighbor, ]
+            if type(post_neighbor) is not list:
+                post_neighbor = [post_neighbor, ]
+            assert len(pre_neighbor) == len(post_neighbor)
+
+            ret['locality'][f'{locality_key}_acc'] = np.mean(np.equal(pre_neighbor, post_neighbor))
+    # Form a list of lists of prefixes to test.
+    if 'portability' in record.keys() and any(record['portability']):
+        for portability_key in record['portability'].keys():
+            if pre_edit:
+                portability_acc = icl_lm_eval(model, model_name, hparams, tok, icl_examples, record['portability'][portability_key]['ground_truth'],
+                                              record['portability'][portability_key]['prompt'])
+            else:
+                portability_acc = icl_lm_eval(model, model_name, hparams, tok, icl_examples, record['portability'][portability_key]['ground_truth'],
+                                              f"New Fact: {prompt} {target_new}\nPrompt: {record['portability'][portability_key]['prompt']}")
+            ret['portability'][f'{portability_key}_acc'] = portability_acc
+    return ret
+
+def icl_lm_eval(
+        model,
+        model_name,
+        hparams: HyperParams,
+        tokenizer,
+        icl_examples,
+        target,
+        x,
+        neighborhood=False
+)-> typing.Dict:
+    device = torch.device(f'cuda:{hparams.device}')
+    if 't5' in model_name.lower():
+        target_len = len(tokenizer.encode(target))
+        target_ids = tokenizer(f'{x} {target}', return_tensors='pt')['input_ids'].to(device)
+        encodings = tokenizer(''.join(icl_examples), return_tensors='pt')
+        input_ids = encodings['input_ids'].to(device)
+        attention_mask = encodings['attention_mask'].to(device)
+        with torch.no_grad():
+            logits = model(input_ids=input_ids, attention_mask=attention_mask, labels=target_ids).logits
+            ans = torch.argmax(logits, dim=-1)[:,-target_len:-1].squeeze()
+            target_ids = target_ids[:,-target_len:-1]
+            if neighborhood:
+                return ans.squeeze().detach().cpu().numpy().tolist()
+            return torch.mean((ans == target_ids.to(ans.device).squeeze()).float(), dim=-1).detach().cpu().numpy().tolist()
+    elif 'llama' in model_name.lower():
+        target_ids = tokenizer(target, return_tensors='pt')['input_ids'].to(device)
+        encodings = tokenizer(''.join(icl_examples) + f'{x} {target}', return_tensors='pt')
+        input_ids = encodings['input_ids'].to(device)
+        attention_mask = encodings['attention_mask'].to(device)
+        logits = model(input_ids=input_ids, attention_mask=attention_mask).logits
+        ans = torch.argmax(logits, dim=-1)[:,-target_ids.size(1):-1].squeeze()
+        target_ids = target_ids[:,1:]   
+        if neighborhood:
+            return ans.squeeze().detach().cpu().numpy().tolist()
+        return torch.mean((ans == target_ids.to(ans.device).squeeze()).float(), dim=-1).detach().cpu().numpy().tolist()        
+    else:
+        target_ids = tokenizer(' ' + target + '\n', return_tensors='pt')['input_ids'].to(device)
+        encodings = tokenizer(''.join(icl_examples) + f'{x} {target}', return_tensors='pt')
+        input_ids = encodings['input_ids'].to(device)
+        attention_mask = encodings['attention_mask'].to(device)
+        logits = model(input_ids=input_ids, attention_mask=attention_mask).logits
+        ans = torch.argmax(logits, dim=-1)[:,-target_ids.size(1):-1].squeeze()
+        target_ids = target_ids[:,:-1]
+        if neighborhood:
+            return ans.squeeze().detach().cpu().numpy().tolist()
+        return torch.mean((ans == target_ids.to(ans.device).squeeze()).float(), dim=-1).detach().cpu().numpy().tolist()
+
+def compute_icl_multimodal_edit_quality(
+    model,
+    model_name,
+    hparams: HyperParams,
+    tok: AutoTokenizer,
+    # vis_tok,
+    icl_examples,
+    record: typing.Dict,
+    device,
+    pre_edit: bool = False
+) -> typing.Dict:
+    """
+    Given a rewritten model, computes generalization and specificity metrics for
+    the desired rewrite (passed in via the CounterFact dataset record). Returns a
+    dictionary containing those metrics.
+
+    :param model: Rewritten model
+    :param tok: Tokenizer
+    :param record: CounterFact dataset record
+    :param snips: ???
+    :param vec: ???
+    :return: Dictionary containing rewriting metrics
+    """
+    vis_root = hparams.coco_image
+    rephrase_root = hparams.rephrase_image
+    # First, unpack rewrite evaluation record.
+    target = record["target"]
+    prompt = record["prompt"]
+    image = record["image"] if record["image"].is_cuda else record["image"].to(hparams.device)
+    rephrase = record["rephrase_prompt"] if 'rephrase_prompt' in record.keys() else None
+    rephrase_image = record["image_rephrase"] if 'image_rephrase' in record.keys() else None
+    if rephrase_image is not None:
+        rephrase_image = rephrase_image if rephrase_image.is_cuda else rephrase_image.to(hparams.device)
+
+    ret = {}
+
+    ###############################################################
+    # if "locality_prompt" in record.keys():
+    #     loc_q = record["locality_prompt"]
+    #     loc_a = record["locality_ground_truth"]
+    # if "multimodal_locality_image" in record.keys():
+    #     m_loc_image = record["multimodal_locality_image"] if record["multimodal_locality_image"].is_cuda else record["multimodal_locality_image"].to(hparams.device)
+    #     m_loc_q = record["multimodal_locality_prompt"]
+    #     m_loc_a = record["multimodal_locality_ground_truth"]
+    
+    # new_fact = f'New Fact: {prompt} {target}\nPrompt: {prompt}'
+
+    # if pre_edit:
+    #     edit_acc, _ = icl_multimodal_lm_eval(model, model_name, hparams, tok, icl_examples,
+    #                                    target, prompt, image)
+    # else:
+    #     edit_acc, _ = icl_multimodal_lm_eval(model, model_name, hparams, tok, icl_examples,
+    #                                           target, new_fact, image)
+    # ret = {
+    #     f"rewrite_acc": edit_acc
+    # }
+    # if rephrase is not None:
+    #     rephrase_acc, _ = icl_multimodal_lm_eval(model, model_name, hparams, tok, icl_examples,
+    #                            target, f'New Fact: {prompt} {target}\nPrompt: {rephrase}', image)
+    #     ret['rephrase_acc'] = rephrase_acc
+        
+    # if "image_rephrase" in record.keys():
+    #     rephrase_image_acc, _ = icl_multimodal_lm_eval(model, model_name, hparams, tok, icl_examples,
+    #                            target, new_fact, rephrase_image)
+    #     ret['rephrase_image_acc'] = rephrase_image_acc
+    
+    # # if pre_edit:
+    # #     ret['locality_acc'] = None
+    # #     ret['locality_image_acc'] = None
+    # # else:
+    # if not pre_edit:
+    #     if "locality_prompt" in record.keys():
+    #         pre_text_loc_logits = icl_multimodal_loc_logits(model, model_name, hparams, tok, [''], loc_a, loc_q, None)
+    #         post_text_loc_logits = icl_multimodal_loc_logits(model, model_name, hparams, tok, icl_examples, loc_a, f'New Fact: {prompt} {target}\nPrompt: {loc_q}', None)
+
+    #         pre_text_loc_logits_softmax_top_k = torch.topk(torch.nn.functional.softmax(pre_text_loc_logits.float(), dim=-1), k=1, dim=-1).indices
+    #         post_text_loc_logits_softmax_top_k = torch.topk(torch.nn.functional.softmax(post_text_loc_logits.float(), dim=-1), k=1, dim=-1).indices
+
+    #         locality_acc = sum(post_text_loc_logits_softmax_top_k.view(-1) == pre_text_loc_logits_softmax_top_k.view(-1))/post_text_loc_logits_softmax_top_k.view(-1).shape[0]
+
+    #         ret['locality_acc'] = locality_acc
+        
+    #     if "multimodal_locality_image" in record.keys():
+    #         pre_image_loc_logits = icl_multimodal_loc_logits(model, model_name, hparams, tok, [''], m_loc_a, m_loc_q, m_loc_image)
+    #         post_image_loc_logits = icl_multimodal_loc_logits(model, model_name, hparams, tok, icl_examples, m_loc_a, f'New Fact: {prompt} {target}\nPrompt: {m_loc_q}', m_loc_image)
+
+    #         pre_image_loc_logits_softmax_top_k = torch.topk(torch.nn.functional.softmax(pre_image_loc_logits.float(), dim=-1), k=10, dim=-1).indices
+    #         post_image_loc_logits_softmax_top_k = torch.topk(torch.nn.functional.softmax(post_image_loc_logits.float(), dim=-1), k=10, dim=-1).indices
+
+    #         locality_image_acc = sum(post_image_loc_logits_softmax_top_k.view(-1) == pre_image_loc_logits_softmax_top_k.view(-1))/post_image_loc_logits_softmax_top_k.view(-1).shape[0]
+
+    #         ret['locality_image_acc'] = locality_image_acc
+    ###################################################################
+
+
+    ######### portability #########
+    if pre_edit:
+        ret['portability_acc'] = None
+    else:
+        if "portability_prompt" in record.keys():
+            assert len(record['portability_prompt'])==1, "Portability evaluation only has one prompt at a time"
+            port_acc = 0
+            for port_q, port_a in zip(record['portability_prompt'], record['portability_ground_truth']):
+                port_acc_i, pred_targ_ids = icl_multimodal_lm_eval(model, model_name, hparams, tok, icl_examples, 
+                                                    port_a, f'New Fact: {prompt} {target}\nPrompt: {port_q}', image)
+                port_acc += port_acc_i
+            ret['portability_acc'] = port_acc/len(record['portability_prompt'])
+            ret['pred_ids'] = pred_targ_ids[0].tolist()
+            ret['targ_ids'] = pred_targ_ids[1].tolist()
+    ######### portability #########
+
+    return ret
+
+def icl_multimodal_lm_eval(
+        model,
+        model_name,
+        hparams: HyperParams,
+        tokenizer,
+        icl_examples,
+        target,
+        x,
+        image,
+        neighborhood=False
+)-> typing.Dict:
+    device = torch.device(f'cuda:{hparams.device}')
+    
+    samples = prepare_multimodal_edit(hparams, tokenizer, target, [''.join(icl_examples) + f'{x}'], image) 
+    
+    return compute_multimodal_edit_quality(model, samples)
+
+def icl_multimodal_loc_logits(
+        model,
+        model_name,
+        hparams: HyperParams,
+        tokenizer,
+        icl_examples,
+        target,
+        x,
+        image,
+        neighborhood=False
+)-> typing.Dict:    
+    batch = prepare_multimodal_edit(hparams, tokenizer, target, [''.join(icl_examples) + f'{x}'], image) 
+    
+    with torch.no_grad():
+        outputs = model(batch)
+        if isinstance(outputs, torch.Tensor):
+            logits = outputs.detach().cpu()
+        else:
+            logits = outputs.logits.detach().cpu()    
+        # targ = outputs.labels.detach().cpu()
+        targ = batch["labels"].cpu()
+    if logits.dim() == 3:
+        logits = logits[:, :-1]
+        # targ = targ[:, 1:]
+        logits = logits[:, -targ.shape[1]:]
+    else:
+        raise ValueError("logits should have 3 dimensions")
+    return logits
+
+def prepare_multimodal_edit(hparams,
+                            tok,
+                            target,
+                            prompts,
+                            image):
+    if isinstance(target, str):
+        target = [target,]
+    if isinstance(prompts, str):
+        prompts = [prompts,]
+    if image is not None and len(image.shape) == 3:
+        image = image.unsqueeze(0)
+    text_input = [prompt_ + ' ' + target_ for prompt_, target_ in zip(prompts, target)]
+    
+    if hparams.model_name == 'minigpt4' or hparams.model_name == 'llava':
+        prompts_len = [len(tok.encode(prompt, add_special_tokens=False)) for prompt in prompts]
+        target = tok(target, add_special_tokens=False, return_tensors="pt",)["input_ids"]
+    else:
+        prompts_len = [len(tok.encode(prompt,)) for prompt in prompts]  
+        target = tok([' ' + target_ if target_[0] != ' ' else target_ for target_ in target], add_special_tokens=False, return_tensors="pt",)["input_ids"]
+        
+    ret = {
+        'text_input': text_input,
+        'image': image,
+        'labels': target,
+        'prompts_len': prompts_len        
+    } 
+    return ret
+
+def compute_multimodal_edit_quality(model, batch):
+    
+    with torch.no_grad():
+        outputs = model(batch)
+        if isinstance(outputs, torch.Tensor):
+            logits = outputs.detach().cpu()
+        else:
+            logits = outputs.logits.detach().cpu()    
+        # targ = outputs.labels.detach().cpu()
+        targ = batch["labels"].cpu()
+    if logits.dim() == 3:
+        logits = logits[:, :-1]
+        # targ = targ[:, 1:]
+        logits = logits[:, -targ.shape[1]:]
+    mask = targ != -100
+    targ[~mask] = 0
+    pred_ids = logits.argmax(-1).masked_fill(~mask, 0).detach().cpu()
+    correct = pred_ids == targ
+    correct = correct & mask
+    num_non_padding = mask.sum().float().item()
+    acc = correct.sum() / num_non_padding
+    
+    return acc, (pred_ids.numpy(), targ.numpy())
+  
+def compute_multimodal_edit_quality_demo(model, batch):
+    
+    with torch.no_grad():
+        outputs = model(batch)
+        if isinstance(outputs, torch.Tensor):
+            logits = outputs.detach().cpu()
+        else:
+            logits = outputs.logits.detach().cpu()    
+        # targ = outputs.labels.detach().cpu()
+        targ = batch["labels"].cpu()
+    if logits.dim() == 3:
+        logits = logits[:, :-1]
+        # targ = targ[:, 1:]
+        logits = logits[:, -targ.shape[1]:]
+    mask = targ != -100
+    targ[~mask] = 0
+    pred_ids = logits.argmax(-1).masked_fill(~mask, 0).detach().cpu()
+    correct = pred_ids == targ
+    correct = correct & mask
+    num_non_padding = mask.sum().float().item()
+    acc = correct.sum() / num_non_padding
+    
+    return acc, pred_ids.numpy(), logits
+
+def compute_multimodal_edit_results(
+    model,
+    model_name,
+    hparams: HyperParams,
+    tok: AutoTokenizer,
+    record: typing.Dict,
+    device
+) -> typing.Dict:
+    """
+    Given a rewritten model, computes generalization and specificity metrics for
+    the desired rewrite (passed in via the CounterFact dataset record). Returns a
+    dictionary containing those metrics.
+
+    :param model: Rewritten model
+    :param tok: Tokenizer
+    :param record: CounterFact dataset record
+    :paran snips: ???
+    :param vec: ???
+    :return: Dictionary containing rewriting metrics
+    """
+    ret = {}
+    # First, unpack rewrite evaluation record.
+    
+    target = record["target"]
+    rewrite_prompts = record["prompt"]
+    image = record["image"]
+    
+    edit_inner = prepare_multimodal_edit(hparams, tok, target, rewrite_prompts, image)
+    ret['rewrite_acc'], _ = compute_multimodal_edit_quality(model, edit_inner)
+    
+    if "rephrase_prompt" in record.keys():
+        rephrase_prompts = record["rephrase_prompt"]
+        edit_outer = prepare_multimodal_edit(hparams, tok, target, rephrase_prompts, image)
+        ret['rephrase_acc'], _ = compute_multimodal_edit_quality(model, edit_outer)
+        
+    if "image_rephrase" in record.keys():
+        rephrase_image = record["image_rephrase"]
+        edit_image_outer = prepare_multimodal_edit(hparams, tok, target, rewrite_prompts, rephrase_image) 
+        ret['image_rephrase_acc'], _ = compute_multimodal_edit_quality(model, edit_image_outer)
+
+    if 'locality_prompt' in record.keys():
+        locality_prompt = record["locality_prompt"]
+        locality_ground_truth = record["locality_ground_truth"]
+        locality = prepare_multimodal_edit(hparams, tok, locality_ground_truth, locality_prompt, None)
+        _, ret['locality_output'] = compute_multimodal_edit_quality(model, locality)
+        
+    if 'multimodal_locality_prompt' in record.keys():
+        m_loc_prompt = record["multimodal_locality_prompt"]
+        m_loc_ground_truth = record["multimodal_locality_ground_truth"]
+        m_loc_image = record["multimodal_locality_image"]
+        m_locality = prepare_multimodal_edit(hparams, tok, m_loc_ground_truth, m_loc_prompt, m_loc_image)
+        _, ret['multimodal_locality_output'] = compute_multimodal_edit_quality(model, m_locality)
+    # Form a list of lists of prefixes to test.
+
+    return ret
+  
+def compute_multimodal_edit_results_demo(
+    model,
+    model_name,
+    hparams: HyperParams,
+    tok: AutoTokenizer,
+    record: typing.Dict,
+    device
+) -> typing.Dict:
+    """
+    Given a rewritten model, computes generalization and specificity metrics for
+    the desired rewrite (passed in via the CounterFact dataset record). Returns a
+    dictionary containing those metrics.
+
+    :param model: Rewritten model
+    :param tok: Tokenizer
+    :param record: CounterFact dataset record
+    :paran snips: ???
+    :param vec: ???
+    :return: Dictionary containing rewriting metrics
+    """
+    ret = {}
+    # First, unpack rewrite evaluation record.
+    
+    target = record["target"]
+    rewrite_prompts = record["prompt"]
+    image = record["image"]
+    
+    edit_inner = prepare_multimodal_edit(hparams, tok, target, rewrite_prompts, image)
+    ret['rewrite_acc'], _, logits = compute_multimodal_edit_quality_demo(model, edit_inner)
+    
+    if "rephrase_prompt" in record.keys():
+        rephrase_prompts = record["rephrase_prompt"]
+        edit_outer = prepare_multimodal_edit(hparams, tok, target, rephrase_prompts, image)
+        ret['rephrase_acc'], _ = compute_multimodal_edit_quality(model, edit_outer)
+        
+    if "image_rephrase" in record.keys():
+        rephrase_image = record["image_rephrase"]
+        edit_image_outer = prepare_multimodal_edit(hparams, tok, target, rewrite_prompts, rephrase_image) 
+        ret['image_rephrase_acc'], _ = compute_multimodal_edit_quality(model, edit_image_outer)
+
+    if 'locality_prompt' in record.keys():
+        locality_prompt = record["locality_prompt"]
+        locality_ground_truth = record["locality_ground_truth"]
+        locality = prepare_multimodal_edit(hparams, tok, locality_ground_truth, locality_prompt, None)
+        _, ret['locality_output'] = compute_multimodal_edit_quality(model, locality)
+        
+    if 'multimodal_locality_prompt' in record.keys():
+        m_loc_prompt = record["multimodal_locality_prompt"]
+        m_loc_ground_truth = record["multimodal_locality_ground_truth"]
+        m_loc_image = record["multimodal_locality_image"]
+        m_locality = prepare_multimodal_edit(hparams, tok, m_loc_ground_truth, m_loc_prompt, m_loc_image)
+        _, ret['multimodal_locality_output'] = compute_multimodal_edit_quality(model, m_locality)
+    # Form a list of lists of prefixes to test.
+
+    return ret, logits
+
+
+    prompt_tok = tok(
+        prompt,
+        padding=True,
+        truncation=True,
+        max_length=hparams.max_length,
+        return_tensors="pt",
+    ).to(f"cuda:{device}")
+
+    trg_tok = tok(
+        target,
+        padding=True,
+        truncation=True,
+        max_length=hparams.max_length,
+        return_tensors="pt",
+    ).to(f"cuda:{device}")
+
+    prompt_tok['labels'] = trg_tok['input_ids']
+    # prompt_tok['decoder_attention_mask'] = trg_tok['attention_mask']
+
+
+    with torch.no_grad():
+        outputs = model(**prompt_tok)
+        if type(outputs) is torch.Tensor:
+            logits = outputs
+        else:
+            logits = outputs.logits
+
+        assert logits.size(1) == trg_tok['input_ids'].size(1)
+        ans = torch.argmax(logits, dim=-1)
+        if locality:
+            return ans.squeeze().detach().cpu().numpy().tolist()
+
+        return torch.mean((trg_tok['input_ids'][:,:-1] == ans[:,:-1]).float(), dim=-1).detach().cpu().numpy().tolist()[0]
+
+def compute_sent_metric(
+    model,
+    edited_model,
+    model_name,
+    hparams: HyperParams,
+    tok: AutoTokenizer,
+    metric_kwargs: typing.Dict,
+    device,
+    test_generation=True
+    ):
+    
+    if "llama" not in model_name:
+        raise NotImplementedError("currently only support for llama")
+        
+    def get_edit_labels(ids, prompts=None):
+        labels = ids.clone()
+        labels[labels == tok.pad_token_id] = -100
+        return labels
+        
+    same_mask = torch.tensor([i == o for i, o in zip(metric_kwargs["inner_target"], metric_kwargs["all_target"])], device=device)
+    edit_toks = {
+        f"{k1}_{k2}": v2.to(device)
+        for k1, v1 in {
+            "inner": metric_kwargs["inner_all_qa"],
+            "outer": metric_kwargs["outer_all_qa"],
+        }.items()
+        for k2, v2 in tok(
+            v1,
+            return_tensors="pt",
+            padding=True,
+            max_length=128,
+            truncation=True,
+        ).items()
+    }
+    for key in ["inner", "outer"]:
+        value = edit_toks[f"{key}_input_ids"]
+        mask = [([True] * value.shape[-1])] * value.shape[0]
+        for i in range(value.shape[0]):
+            sep_idx = list(value[i]).index(tok.convert_tokens_to_ids("</s>"))
+            for j in range(sep_idx): #连带</s>一块mask掉
+                mask[i][j] = False
+        edit_toks[key + "_q_mask"] = torch.tensor(mask).to(device)
+
+    with torch.no_grad():
+        inner_base_logits = model(
+            input_ids=edit_toks["inner_input_ids"],
+            attention_mask=edit_toks["inner_attention_mask"],   
+        )["logits"]
+        inner_edit_logits = edited_model(
+            input_ids=edit_toks["inner_input_ids"],
+            attention_mask=edit_toks["inner_attention_mask"],   
+        )["logits"]
+        
+        outer_base_logits = model(
+            input_ids=edit_toks["outer_input_ids"],
+            attention_mask=edit_toks["outer_attention_mask"],   
+        )["logits"]
+        outer_edit_logits = edited_model(
+            input_ids=edit_toks["outer_input_ids"],
+            attention_mask=edit_toks["outer_attention_mask"],   
+        )["logits"]
+    
+    result = {
+        "es": es_sent(inner_base_logits, inner_edit_logits, edit_toks["inner_q_mask"], get_edit_labels(edit_toks["inner_input_ids"]), same_mask).item(),
+        "dd": kl_loc_loss(outer_base_logits, outer_edit_logits, edit_toks["outer_q_mask"]).item(),
+    }
+    if  test_generation:
+        result['fluency'] = test_generation_quality(model=model,tok=tok,prefixes=metric_kwargs["inner_q"] if isinstance(metric_kwargs["inner_q"],list) else [metric_kwargs["inner_q"],], max_out_len=100)
+    return result
