@@ -2,4 +2,4 @@
 
 # VLKEB: A Large Vision-Language Model Knowledge Editing Benchmark
 
-Branch for multihop portability and sequential editing test
+Branch for training and evaluation

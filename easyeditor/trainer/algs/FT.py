@@ -55,9 +55,9 @@ class FT(EditableModel):
         return None
 
     def edit(self, batch, condition=None, detach_history=False, return_factors=False):
+        if self.save_weight is not None:
+            self.model.load_state_dict(self.save_weight, strict=False)
         self.model.train()
-        # if self.save_weight:
-        #     self.model.load_state_dict(self.save_weight, strict=False)
         if self.config.inner_params[0] in ['Qformer', 'mm_projector']:
 
             weights = {
@@ -78,16 +78,15 @@ class FT(EditableModel):
             }
         
         # Save old weights for future restoration
-        # self.save_weight = {k: v.detach().clone() for k, v in weights.items()}
+        self.save_weight = {k: v.detach().clone() for k, v in weights.items()}
         ########
-        
+
         opt = torch.optim.AdamW(
             [v for _, v in weights.items()],
             lr=self.config.edit_lr
         )
         for name, w in self.model.named_parameters():
             w.requires_grad = name in weights
-
 
         if 'minigpt4' in self.config.model_name.lower() or 'blip' in self.config.model_name.lower() or 'llava' in self.config.model_name.lower():
             pbar = trange(self.config.num_steps, ncols=120)

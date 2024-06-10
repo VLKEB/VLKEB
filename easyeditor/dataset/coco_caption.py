@@ -74,14 +74,6 @@ class CaptionDataset(BaseDataset):
             rephrase_image_path = os.path.join(self.rephrase_root, record["image_rephrase"])
             locality_image_path = os.path.join(self.vis_root, record['m_loc'])
             
-            # image = Image.open(image_path).convert("RGB")
-            # rephrase_image = Image.open(rephrase_image_path).convert("RGB")
-            # locality_image = Image.open(locality_image_path).convert("RGB")
-
-            # image = self.vis_processor(image)
-            # rephrase_image = self.vis_processor(rephrase_image)  
-            # locality_image = self.vis_processor(locality_image)  
-                      
             item = {
                 'prompt': record['src'],
                 'pred': record['pred'],
@@ -107,7 +99,7 @@ class CaptionDataset(BaseDataset):
             item['multimodal_locality_prompt'] = record['m_loc_q']
             item['multimodal_locality_ground_truth'] = record['m_loc_a']
 
-            if 'port_new' in record.keys():
+            if hop and 'port_new' in record.keys():
                 item['portability_prompt'] = []
                 item['portability_ground_truth'] = []
                 find_hop = False

@@ -10,35 +10,38 @@ from easyeditor import MENDMultimodalTrainingHparams, SERACMultimodalTrainingHpa
 from easyeditor import encode_ike_facts_multimodal
 from sentence_transformers import SentenceTransformer
 import sys
-from datetime import datetime
 
 
 def print_result(metrics, save_path=None):
-    # rewrite_acc = mean([m['post']['rewrite_acc'].item() for m in metrics])
-    # rephrase_acc = mean([m['post']['rephrase_acc'].item() for m in metrics])
-    # rephrase_image_acc = mean([m['post']['rephrase_image_acc'].item() for m in metrics])
-    # locality_acc = mean([m['post']['locality_acc'].item() for m in metrics])
-    # locality_image_acc = mean([m['post']['locality_image_acc'].item() for m in metrics])
-    # print(f'rewrite_acc: {rewrite_acc}')
-    # print(f'rephrase_acc: {rephrase_acc}')
-    # print(f'rephrase_image_acc: {rephrase_image_acc}')
-    # print(f'locality_acc: {locality_acc}')
-    # print(f'locality_image_acc: {locality_image_acc}')
+    rewrite_acc = mean([m['post']['rewrite_acc'].item() for m in metrics])
+    rephrase_acc = mean([m['post']['rephrase_acc'].item() for m in metrics])
+    rephrase_image_acc = mean([m['post']['rephrase_image_acc'].item() for m in metrics])
+    locality_acc = mean([m['post']['locality_acc'].item() for m in metrics])
+    locality_image_acc = mean([m['post']['locality_image_acc'].item() for m in metrics])
+    print(f'rewrite_acc: {rewrite_acc}')
+    print(f'rephrase_acc: {rephrase_acc}')
+    print(f'rephrase_image_acc: {rephrase_image_acc}')
+    print(f'locality_acc: {locality_acc}')
+    print(f'locality_image_acc: {locality_image_acc}')
 
     ### portability
-    portability_acc = mean([m['post']['portability_acc'].item() for m in metrics if 'portability_acc' in m['post']])
-    print(f'portability_acc: {portability_acc}')
+    if 'portability_acc' in metrics[0]['post']:
+        portability_acc = mean([m['post']['portability_acc'].item() for m in metrics])
+        print(f'portability_acc: {portability_acc}')
+
 
     if save_path is not None:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
         with open(save_path, 'w') as f:
-            # f.write(f'rewrite_acc: {rewrite_acc}\n')
-            # f.write(f'rephrase_acc: {rephrase_acc}\n')
-            # f.write(f'rephrase_image_acc: {rephrase_image_acc}\n')
-            # f.write(f'locality_acc: {locality_acc}\n')
-            # f.write(f'locality_image_acc: {locality_image_acc}\n')
+            f.write(f'rewrite_acc: {rewrite_acc}\n')
+            f.write(f'rephrase_acc: {rephrase_acc}\n')
+            f.write(f'rephrase_image_acc: {rephrase_image_acc}\n')
+            f.write(f'locality_acc: {locality_acc}\n')
+            f.write(f'locality_image_acc: {locality_image_acc}\n')
 
             #### portability
-            f.write(f'portability_acc: {portability_acc}\n')
+            if 'portability_acc' in metrics[0]['post']:
+                f.write(f'portability_acc: {portability_acc}\n')
 
 
 def Generate_Embedding_for_IKE():
@@ -50,7 +53,7 @@ def Generate_Embedding_for_IKE():
 
 
 ####################### MiniGPT4 ##########################
-def train_MEND_MiniGPT4_Caption():
+def train_MEND_MiniGPT4():
     hparams = MENDMultimodalTrainingHparams.from_hparams('hparams/TRAINING/MEND/minigpt4.yaml')
     train_ds = CaptionDataset(train_json_path, config=hparams)
     eval_ds = CaptionDataset(eval_json_path, config=hparams, hop=hop)
@@ -63,7 +66,7 @@ def train_MEND_MiniGPT4_Caption():
     trainer.run()    
 
 
-def test_MEND_MiniGPT4_Caption():
+def test_MEND_MiniGPT4():
     hparams = MENDMultimodalHparams.from_hparams('hparams/MEND/minigpt4.yaml')
     eval_ds = CaptionDataset(eval_json_path, config=hparams, hop=hop)
     trainer = MultimodalTrainer(
@@ -75,7 +78,7 @@ def test_MEND_MiniGPT4_Caption():
     trainer.run()
 
 
-def train_SERAC_MiniGPT4_Caption():
+def train_SERAC_MiniGPT4():
     hparams = SERACMultimodalTrainingHparams.from_hparams('hparams/TRAINING/SERAC/minigpt4.yaml')
     train_ds = CaptionDataset(train_json_path, config=hparams)
     eval_ds = CaptionDataset(eval_json_path, config=hparams, hop=hop)
@@ -88,7 +91,7 @@ def train_SERAC_MiniGPT4_Caption():
     trainer.run()
 
 
-def test_SERAC_MiniGPT4_Caption():
+def test_SERAC_MiniGPT4():
     hparams = SERACMultimodalHparams.from_hparams('hparams/SERAC/minigpt4.yaml')
     eval_ds = CaptionDataset(eval_json_path, config=hparams, hop=hop)
     trainer = MultimodalTrainer(
@@ -121,23 +124,20 @@ def test_FT_MiniGPT4_Qformer():
 
 
 def test_IKE_MiniGPT4():
-    cur_time = datetime.now().strftime("%y%m%d_%H%M%S")
     hparams = IKEMultimodalHyperParams.from_hparams('hparams/IKE/minigpt4.yaml')
-    save_path = f'results/IKE/{cur_time}_{hparams.model_name}_results_port_hop{hop}.txt'
     editor = MultimodalEditor.from_hparams(hparams)
     eval_ds = CaptionDataset(eval_json_path, config=hparams, hop=hop)
     metrics, edited_model, _ = editor.edit_dataset(
         ds=eval_ds,
         train_ds='train_ds',
-        keep_original_weight=True,
-        cur_time=cur_time        
+        keep_original_weight=True        
     )
     
-    print_result(metrics, save_path)
+    print_result(metrics, save_path='results/IKE/MiniGPT4_results_portability.txt')
 
 
 ####################### BLIP2 ##########################
-def train_MEND_Blip2OPT_Caption():
+def train_MEND_Blip2OPT():
     hparams = MENDMultimodalTrainingHparams.from_hparams('hparams/TRAINING/MEND/blip2.yaml')
     train_ds = CaptionDataset(train_json_path, config=hparams)
     eval_ds = CaptionDataset(eval_json_path, config=hparams, hop=hop)
@@ -150,7 +150,7 @@ def train_MEND_Blip2OPT_Caption():
     trainer.run()
     
 
-def test_MEND_Blip2OPT_Caption():
+def test_MEND_Blip2OPT():
     hparams = MENDMultimodalHparams.from_hparams('hparams/MEND/blip2.yaml')
     eval_ds = CaptionDataset(eval_json_path, config=hparams, hop=hop)
     trainer = MultimodalTrainer(
@@ -161,7 +161,7 @@ def test_MEND_Blip2OPT_Caption():
     trainer.run()    
 
     
-def train_SERAC_Blip2OPT_Caption():
+def train_SERAC_Blip2OPT():
     hparams = SERACMultimodalTrainingHparams.from_hparams('hparams/TRAINING/SERAC/blip2.yaml')
     train_ds = CaptionDataset(train_json_path, config=hparams)
     eval_ds = CaptionDataset(eval_json_path, config=hparams, hop=hop)
@@ -174,7 +174,7 @@ def train_SERAC_Blip2OPT_Caption():
     trainer.run()
 
 
-def test_SERAC_Blip2OPT_Caption():
+def test_SERAC_Blip2OPT():
     hparams = SERACMultimodalHparams.from_hparams('hparams/SERAC/blip2.yaml')
     eval_ds = CaptionDataset(eval_json_path, config=hparams, hop=hop)
     trainer = MultimodalTrainer(
@@ -206,19 +206,16 @@ def test_FT_Blip2OPT_QFormer():
     trainer.run()
 
 def test_IKE_Blip2OPT():
-    cur_time = datetime.now().strftime("%y%m%d_%H%M%S")
     hparams = IKEMultimodalHyperParams.from_hparams('hparams/IKE/blip2.yaml')
-    save_path = f'results/IKE/{cur_time}_{hparams.model_name}_results_port_hop{hop}.txt'
     editor = MultimodalEditor.from_hparams(hparams)
     eval_ds = CaptionDataset(eval_json_path, config=hparams, hop=hop)
     metrics, edited_model, _ = editor.edit_dataset(
         ds=eval_ds,
         train_ds='train_ds',
-        keep_original_weight=True,
-        cur_time=cur_time        
+        keep_original_weight=True        
     )
     
-    print_result(metrics, save_path)
+    print_result(metrics, save_path='results/IKE/Blip2OPT_results_portability.txt')
 
 
 ####################### LLAVA ##########################
@@ -288,28 +285,23 @@ def test_FT_LLaVA_mmproj():
     trainer.run()
 
 def test_IKE_LLaVA():
-    cur_time = datetime.now().strftime("%y%m%d_%H%M%S")
     hparams = IKEMultimodalHyperParams.from_hparams('hparams/IKE/llava.yaml')
-    save_path = f'results/IKE/{cur_time}_{hparams.model_name}_results_port_hop{hop}.txt'
     editor = MultimodalEditor.from_hparams(hparams)
     eval_ds = CaptionDataset(eval_json_path, config=hparams, hop=hop)
     metrics, edited_model, _ = editor.edit_dataset(
         ds=eval_ds,
         train_ds='train_ds',
-        keep_original_weight=True,
-        cur_time=cur_time        
+        keep_original_weight=True        
     )
     
-    print_result(metrics, save_path)
+    print_result(metrics, save_path='results/IKE/LLAVA_results_portability.txt')
 
 if __name__ == "__main__":
     function_name = sys.argv[1]
-    hop = sys.argv[2]
+    hop = sys.argv[2] if len(sys.argv) > 2 else None
 
     train_json_path = 'datasets/train.json'
     eval_json_path = 'datasets/eval_multihop.json'
-    os.makedirs('results/results_multihop', exist_ok=True)
-
     if function_name not in globals() or not callable(globals()[function_name]):
         print(f"Error: Function '{function_name}' does not exist.")
         sys.exit(1)

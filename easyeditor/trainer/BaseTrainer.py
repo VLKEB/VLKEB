@@ -204,18 +204,15 @@ class BaseTrainer:
                 self.model.load_state_dict(archive["model"])
                 self.model.to(self.config.device)
 
-        result_name = f'{cur_time}_{self.config.alg}_{self.config.model_name}'
         val_steps = self.config.val_steps if self.config.debug else None
-        val_info = self.validate(log=True, steps=val_steps, result_name=result_name)
+        val_info = self.validate(log=True, steps=val_steps)
         self.echo(self.global_iter, val_info, pretty=True)
 
         if self.config.results_dir is not None:
-            # model_dir = os.path.join(self.config.results_dir, "models", self.config.alg)
-            # results_path = f"{model_dir}/{cur_time}_{self.config.model_name}_results.json"
-            results_path = f"results/results_multihop/{result_name}_port_hop{self.val_set.hop}_results.json"
+            model_dir = os.path.join(self.config.results_dir, "models", self.config.alg)
+            results_path = f"{model_dir}/{cur_time}_{self.config.model_name}_results.json"
         else:
-            # results_path = f"{os.getcwd()}/{cur_time}_{self.config.model_name}_results.json"
-            results_path = f"results/results_multihop/{result_name}_results.json"
+            results_path = f"{os.getcwd()}/{cur_time}_{self.config.model_name}_results.json"
 
         with open(results_path, "w") as f:
             json.dump(
