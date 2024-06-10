@@ -20,7 +20,7 @@ from tqdm import tqdm
 from copy import deepcopy
 
 class CaptionDataset(BaseDataset):
-    def __init__(self, data_dir: str, size:  typing.Optional[int] = None, config=None, no_image=False, hop=None, *args, **kwargs):
+    def __init__(self, data_dir: str, size:  typing.Optional[int] = None, config=None, no_image=False, edit_twice_img=False, *args, **kwargs):
         """
         vis_root (string): Root directory of images (e.g. coco/images/)
         ann_root (string): directory to store the annotation file
@@ -57,17 +57,10 @@ class CaptionDataset(BaseDataset):
 
         data = []
         if size is not None:
-            self.annotation = self.annotation[:size]
-        if hop:
-            self.hop = hop
-            assert int(hop) in [1, 2, 3, 4], "hop should be 1, 2, 3, or 4"
-            port_types = ['', '1-hop', '2-hop', '3-hop', '4-hop']
-            port_type = port_types[int(hop)]
+            self.annotation = self.annotation[:size]  
         for record in tqdm(self.annotation, ncols=120, desc='Loading Data'):
             
             if record['alt'] == "":
-                continue
-            if hop and 'port_new' not in record.keys():
                 continue
             
             image_path = os.path.join(self.vis_root, record["image"])
@@ -99,27 +92,28 @@ class CaptionDataset(BaseDataset):
             item['multimodal_locality_prompt'] = record['m_loc_q']
             item['multimodal_locality_ground_truth'] = record['m_loc_a']
 
-            if hop and 'port_new' in record.keys():
+            if 'port_new' in record.keys():
+                # edit twice
+                item['port_edit_2_prompt'] = []
+                item['port_edit_2_ground_truth'] = []
+
                 item['portability_prompt'] = []
                 item['portability_ground_truth'] = []
-                find_hop = False
                 for ports in record['port_new']:
-                    if ports['port_type'] == port_type:
-                        find_hop = True
-                        port_q = ports['Q&A']['Question']
-                        port_a = ports['Q&A']['Answer']
-                        item['portability_prompt'].append(port_q)
-                        item['portability_ground_truth'].append(port_a)
-                        break
-                
-                if not find_hop:
-                    continue
+                    item['portability_prompt'].append(ports['port_q'])
+                    item['portability_ground_truth'].append(ports['port_a'])
+
+                    # edit twice
+                    item['port_edit_2_prompt'].append(ports['port_edit_q'])
+                    item['port_edit_2_ground_truth'].append(ports['port_edit_a'])
             data.append(item)
             
         # if size is not None:
         #     data = data[:size]        
         self._data = data
         self.no_image = no_image
+
+        self.edit_twice_img = edit_twice_img
 
     def __getitem__(self, index):
         if self.no_image:
@@ -230,6 +224,20 @@ class CaptionDataset(BaseDataset):
                 port['labels'] = self.tok([port_a], add_special_tokens=False, return_tensors="pt",)["input_ids"]
                 edit_ports.append(port)
 
+            port_edit_2 = []
+            for port_edit_q, port_edit_a in zip(batch[0]['port_edit_2_prompt'], batch[0]['port_edit_2_ground_truth']):
+                port_edit = {}
+                port_edit['image'] = torch.stack(image, dim=0) if self.edit_twice_img else None # no image default
+                port_edit['text_input'] = [' '.join([port_edit_q, port_edit_a])]
+                port_edit['labels'] = [port_edit_a]
+                if self.config.model_name == "minigpt4" or self.config.model_name == "blip2":
+                    port_edit['prompts_len'] = [len(self.tok.encode(port_edit_q, add_special_tokens=False))]
+                    port_edit['labels'] = self.tok([port_edit_a], add_special_tokens=False, return_tensors="pt",)["input_ids"]
+                else:
+                    port_edit['prompts_len'] = [len(self.tok.encode(port_edit_q))]
+                    port_edit['labels'] = self.tok([port_edit_a], return_tensors="pt",)["input_ids"]
+                port_edit_2.append(port_edit)
+
         
         batch = {
             "edit_inner": edit_inner,
@@ -238,6 +246,7 @@ class CaptionDataset(BaseDataset):
             "loc": loc,
             "loc_image": loc_image,
             'port': edit_ports,
+            'edit_port_2': port_edit_2,
             "cond": cond
         }
         return dict_to(batch, self.config.device)

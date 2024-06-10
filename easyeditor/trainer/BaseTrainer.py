@@ -208,12 +208,13 @@ class BaseTrainer:
         val_info = self.validate(log=True, steps=val_steps)
         self.echo(self.global_iter, val_info, pretty=True)
 
-        if self.config.results_dir is not None:
-            model_dir = os.path.join(self.config.results_dir, "models", self.config.alg)
-            results_path = f"{model_dir}/{cur_time}_{self.config.model_name}_results.json"
-        else:
-            results_path = f"{os.getcwd()}/{cur_time}_{self.config.model_name}_results.json"
-
+        # if self.config.results_dir is not None:
+            # model_dir = os.path.join(self.config.results_dir, "models", self.config.alg)
+            # results_path = f"{model_dir}/{cur_time}_{self.config.model_name}_results.json"
+        results_path = f"results/results_edit_onehop/{cur_time}_{self.config.alg}_{self.config.model_name}_results.json"
+        # else:
+            # results_path = f"/data0/huanghan/projects/EasyEdit_kebench/results/results_edit_twice/{cur_time}_{self.config.model_name}_results.json"
+        os.makedirs(os.path.dirname(results_path), exist_ok=True)
         with open(results_path, "w") as f:
             json.dump(
                 {"results": val_info}, f
