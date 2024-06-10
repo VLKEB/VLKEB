@@ -12,9 +12,3 @@ Code for Editing Factual Knowledge in Language Models (https://arxiv.org/abs/210
   year={2021},
 }
 ```
-
-**Please consider citing our works if you use code from this repository.**
-
-# Models and Data
-
-This [folder](https://mega.nz/folder/p9JC3bwC#vzcrsh9b-pnWPaWdlcBVUA) contains the datasets and the base models used for this work.
