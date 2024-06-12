@@ -1,4 +1,10 @@
 #/bin/bash
+
+# USAGE: bash train_ke.sh [GPU_ID] [MODEL_NAME]
+# EXAMPLE: bash train_ke.sh 0 blip2
+
+# MODEL_NAME=[blip2, minigpt4, llava]
+
 GPU=$1
 MODEL=$2
 export CUDA_VISIBLE_DEVICES=$GPU

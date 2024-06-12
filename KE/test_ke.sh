@@ -1,4 +1,10 @@
 #/bin/bash
+
+# USAGE: bash test_ke.sh [GPU_ID] [MODEL_NAME] [CHECKPOINT_PATH]
+# EXAMPLE: bash test_ke.sh 0 blip2 "/path/to/checkpoint"
+
+# MODEL_NAME=[blip2, minigpt4, llava]
+
 GPU=$1
 MODEL=$2
 CHECKPOINT=$3
