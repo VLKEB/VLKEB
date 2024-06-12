@@ -29,7 +29,7 @@
         </ul>
     </li>
     <li><a href="#-usage">🧪 Usage</a></li>
-    <li><a href="#-citation">📑 Citation</a></li>
+    <li><a href="#-citation">📖 Citation</a></li>
     <li><a href="#-contact">📧 Contact</a></li>
     <li><a href="#-acknowledgments">🎉 Acknowledgments</a></li>
 </ul>
@@ -57,20 +57,20 @@ kaggle datasets download -d hymanh/vlkeb-data
 
 The dataset is organized as follows:
 
-```
+```bash
 ├── VLKEB/
 │   ├── VLKEB_images/           # image folder
 │   │   ├── m.0104lr/           # image subfolder, entity ID
-|   |   |   ├── google_15.jpg   # image file
-|   |   |   ├── ...
+│   │   │   ├── google_15.jpg   # image file
+│   │   │   ├── ...
 │   │   ├── ...
-|   |   
+│   │      
 │   ├── train.json              # Train file
 │   ├── eval.json               # Evaluation file, without portability test
-│   ├── eval_multihop.json      # Evaluation, containing multi-hop portability
-│   ├── eval_edit_onehop.json   # Evaluation, edit one-hop knowledge for portability
+│   ├── eval_multihop.json      # Evaluation file, containing multi-hop portability
+│   ├── eval_edit_onehop.json   # Evaluation file, edit one-hop knowledge for portability
 │   │
-│   └── LICENSE.txt             # License
+│   └── LICENSE.txt             # License file
 ```
 
 VLKEB includes a total of 8174 edits, divided into 5000 for training and 3174 for evaluation. There are 18434 images used in the Reliability, Generality, and Locality tests. The Portability test utilizes the same images as the Reliability test and comprises a total of 4819 cases. These cases are distributed among 1-hop, 2-hop, 3-hop, and 4-hop categories, with 1278, 1238, 1193, and 1110 cases, respectively.
@@ -150,7 +150,7 @@ hugging_cache/
 ├── Qwen-VL/
 ├── vicuna-7b/
 ├── vicuna-7b-v1.5/
-|
+│   
 ├── blip2_pretrained_flant5xxl.pth
 ├── blip2_pretrained_opt2.7b.pth
 ├── eva_vit_g.pth
@@ -214,20 +214,20 @@ The parameters are all in [hparams](https://github.com/VLKEB/VLKEB/tree/main/hpa
 To run the code, check the python file under root folder and run as the following:
 ```bash
 # at main branch
-python multimodal_edit.py [func name] [hop num]
+python multimodal_edit.py [FUNC_NAME] [HOP_NUM] # see .py file for function names 
 
 # at main branch, KE, can use bash scripts
-./train_ke.sh [GPU_ID] [MODEL_NAME]
-./test_ke.sh [GPU_ID] [MODEL_NAME] [CHECKPOINT_PATH]
-./test_multihop.sh [GPU_ID] [MODEL_NAME] [HOP_NUM]
+./train_ke.sh [GPU_ID] [MODEL_NAME] # MODEL_NAME=[blip2, minigpt4, llava]
+./test_ke.sh [GPU_ID] [MODEL_NAME] [CHECKPOINT_PATH] # test without portability
+./test_multihop.sh [GPU_ID] [MODEL_NAME] [HOP_NUM] # HOP_NUM=[1, 2, 3, 4]
 
 # at multihop_and_sequential branch
-python test_base_portability.py [func name] [hop num]
-python test_multihop_portability.py [func name] [hop num]
-python test_sequential_editing.py [func name]
+python test_base_portability.py [FUNC_NAME] [HOP_NUM] # test portability on unedited models
+python test_multihop_portability.py [FUNC_NAME] [HOP_NUM]
+python test_sequential_editing.py [FUNC_NAME] # hop num is 1
 
 # at edit_onehop branch
-python test_edit_onehop.py [func name]
+python test_edit_onehop.py [FUNC_NAME]
 ```
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
