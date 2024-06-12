@@ -1,6 +1,5 @@
 <a name="readme-top"></a>
 
-
 <!-- PROJECT LOGO -->
 <br />
 <div align="center">
@@ -10,16 +9,12 @@
 
 <h3 align="center">VLKEB: A Large Vision-Language Model Knowledge Editing Benchmark</h3>
 
-
   [![Arxiv][arxiv-shield]][arxiv-url]
   [![Data][data-shield]][data-url]
   [![Issues][issues-shield]][issues-url]
   [![MIT License][license-shield]][license-url]
 
 </div>
-
-
-
 
 <!-- TABLE OF CONTENTS -->
 <details>
@@ -41,7 +36,6 @@
 </details>
 
 
-
 <!-- ABOUT THE PROJECT -->
 ## 🛠️ About This Project
 We construct a new Large **V**ision-**L**anguage Model **K**nowledge **E**diting **B**enchmark, **VLKEB**, and extend the Portability metric for more comprehensive evaluation. Leveraging a multi-modal knowledge graph, our image data are bound with knowledge entities. This can be further used to extract entity-related knowledge, which constitutes the base of editing data.
@@ -49,9 +43,6 @@ We construct a new Large **V**ision-**L**anguage Model **K**nowledge **E**diting
 [![Product Name Screen Shot][product-screenshot]](https://github.com/VLKEB/VLKEB)
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-
-
 
 
 <!-- GETTING STARTED -->
@@ -84,7 +75,6 @@ The dataset is organized as follows:
 
 VLKEB includes a total of 8174 edits, divided into 5000 for training and 3174 for evaluation. There are 18434 images used in the Reliability, Generality, and Locality tests. The Portability test utilizes the same images as the Reliability test and comprises a total of 4819 cases. These cases are distributed among 1-hop, 2-hop, 3-hop, and 4-hop categories, with 1278, 1238, 1193, and 1110 cases, respectively.
 <table>
-    <!-- <caption><h4>Statistics of VLKEB</h4></caption> -->
     <thead>
         <tr>
             <th></th>
@@ -135,6 +125,7 @@ We conduct experiments based on the great works in [Acknowledgments](#-acknowled
 ```bash
 # To run code of EasyEdit, use the following environment
 conda env create -f envs/vlkeb_easyedit.yml
+
 # To run code of KE, use the following environment
 conda env create -f envs/vlkeb_ke.yml
 ```
@@ -144,7 +135,7 @@ conda env create -f envs/vlkeb_ke.yml
 To run the code, we need to download the pre-trained pytorch models and put them in proper directories.
 
 Here we put under 'hugging_cache' folder and 'openai' folder:
-```
+```bash
 # models in hugging_cache folder
 hugging_cache/
 ├── all-MiniLM-L6-v2/
@@ -169,7 +160,7 @@ hugging_cache/
 openai/
 └── clip-vit-large-patch14-336/
 ``` 
-There links are in the following:
+Links are in the following:
 <table>
     <tr>
         <td><a href="https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2">all-MiniLM-L6-v2</a></td>
@@ -202,9 +193,6 @@ There links are in the following:
         <td></td>
     </tr>
 </table>
-
-
-
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -246,16 +234,13 @@ python test_edit_onehop.py [func name]
 
 
 
-
-
 <!-- Citation -->
-## 📑 Citation
+## 📖 Citation
 
 ```bibtext
 
 ```
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
-
 
 
 <!-- CONTACT -->
@@ -278,22 +263,26 @@ We would also like to extend our gratitude to all the other projects and contrib
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 
-
 <!-- MARKDOWN LINKS & IMAGES -->
-<!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
+[product-screenshot]: figs/main.png
+
+[arxiv-shield]: https://img.shields.io/badge/Arxiv-paper-red?style=for-the-badge&logo=arxiv&logoColor=red
+[arxiv-url]: https://arxiv.org/abs/2403.07350
+
+[data-shield]: https://img.shields.io/badge/Kaggle-Dataset-blue?style=for-the-badge&logo=kaggle
+[data-url]: https://www.kaggle.com/datasets/hymanh/vlkeb-data
+
 [contributors-shield]: https://img.shields.io/github/contributors/VLKEB/VLKEB.svg?style=for-the-badge
 [contributors-url]: https://github.com/VLKEB/VLKEB/graphs/contributors
+
 [forks-shield]: https://img.shields.io/github/forks/VLKEB/VLKEB.svg?style=for-the-badge
 [forks-url]: https://github.com/VLKEB/VLKEB/network/members
+
 [stars-shield]: https://img.shields.io/github/stars/VLKEB/VLKEB.svg?style=for-the-badge
 [stars-url]: https://github.com/VLKEB/VLKEB/stargazers
 
 [issues-shield]: https://img.shields.io/github/issues/VLKEB/VLKEB.svg?style=for-the-badge
 [issues-url]: https://github.com/VLKEB/VLKEB/issues
+
 [license-shield]: https://img.shields.io/github/license/VLKEB/VLKEB.svg?style=for-the-badge
 [license-url]: https://github.com/VLKEB/VLKEB/blob/main/LICENSE
-[product-screenshot]: figs/main.png
-[arxiv-shield]: https://img.shields.io/badge/Arxiv-paper-red?style=for-the-badge&logo=arxiv&logoColor=red
-[arxiv-url]: https://arxiv.org/abs/2403.07350
-[data-shield]: https://img.shields.io/badge/Kaggle-Dataset-blue?style=for-the-badge&logo=kaggle
-[data-url]: https://www.kaggle.com/datasets/hymanh/vlkeb-data
