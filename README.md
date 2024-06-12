@@ -130,7 +130,7 @@ VLKEB includes a total of 8174 edits, divided into 5000 for training and 3174 fo
 
 ### Environments
 **Conda environment:** we export the conda environment file for running the code.
-We conduct experiments based on the great works in [Acknowledgments](#acknowledgments).
+We conduct experiments based on the great works in [Acknowledgments](#-acknowledgments).
 
 ```bash
 # To run code of EasyEdit, use the following environment
@@ -271,15 +271,7 @@ Haitian Zhong - <haitian.zhong@cripac.ia.ac.cn>
 
 <!-- ACKNOWLEDGMENTS -->
 ## 🎉 Acknowledgments
-We would like to thank the following projects and their great works for making this project possible:
-* [MMKG](https://github.com/mniepert/mmkb)
-* [EasyEdit](https://github.com/zjunlp/EasyEdit)
-* [KnowledgeEditor](https://github.com/nicola-decao/KnowledgeEditor)
-* [LAVIS (BLIP2)](https://github.com/salesforce/LAVIS/tree/main)
-* [MiniGPT-4](https://github.com/Vision-CAIR/MiniGPT-4)
-* [LLaVA](https://github.com/haotian-liu/LLaVA)
-* [Qwen-VL](https://github.com/QwenLM/Qwen-VL)
-* [mPLUG-Owl2](https://github.com/X-PLUG/mPLUG-Owl)
+We would like to thank the following projects and their great works for making this project possible: [MMKG](https://github.com/mniepert/mmkb), [EasyEdit](https://github.com/zjunlp/EasyEdit), [KnowledgeEditor](https://github.com/nicola-decao/KnowledgeEditor), [LAVIS (BLIP2)](https://github.com/salesforce/LAVIS/tree/main), [MiniGPT-4](https://github.com/Vision-CAIR/MiniGPT-4), [LLaVA](https://github.com/haotian-liu/LLaVA), [Qwen-VL](https://github.com/QwenLM/Qwen-VL), [mPLUG-Owl2](https://github.com/X-PLUG/mPLUG-Owl).
   
 We would also like to extend our gratitude to all the other projects and contributors in the open-source community whose work may not be directly listed here but has nonetheless been invaluable. Your innovations, tools, and libraries have greatly contributed to our project. We are immensely grateful for your work!
 
