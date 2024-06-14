@@ -236,9 +236,16 @@ python test_edit_onehop.py [FUNC_NAME]
 
 <!-- Citation -->
 ## 📖 Citation
+If you find our project or dataset helpful to your research, please consider citing:
 
 ```bibtext
-
+@misc{huang2024vlkeb,
+      title={VLKEB: A Large Vision-Language Model Knowledge Editing Benchmark}, 
+      author={Han Huang and Haitian Zhong and Tao Yu and Qiang Liu and Shu Wu and Liang Wang and Tieniu Tan},
+      year={2024},
+      eprint={2403.07350},
+      archivePrefix={arXiv}
+}
 ```
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
