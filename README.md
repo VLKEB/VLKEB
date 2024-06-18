@@ -11,8 +11,9 @@
 
   [![Arxiv][arxiv-shield]][arxiv-url]
   [![Data][data-shield]][data-url]
+  [![HuggingFace][model-shield]][model-url]
   [![Issues][issues-shield]][issues-url]
-  [![MIT License][license-shield]][license-url]
+  <!-- [![MIT License][license-shield]][license-url] -->
 
 </div>
 
@@ -54,6 +55,8 @@ Dataset is available at [Kaggle](https://www.kaggle.com/datasets/hymanh/vlkeb-da
 ``` bash
 kaggle datasets download -d hymanh/vlkeb-data
 ```
+
+We also provide a [Hugging Face](https://huggingface.co/datasets/HymanH/VLKEB-data) dataset as an alternative.
 
 The dataset is organized as follows:
 
@@ -132,7 +135,18 @@ conda env create -f envs/vlkeb_ke.yml
 
 ### Pre-trained Models
 
-To run the code, we need to download the pre-trained pytorch models and put them in proper directories.
+We provide pre-trained models for SERAC, MEND and KE in the paper.
+
+The weights can be downloaded from [Hugging Face](https://huggingface.co/HymanH/VLKEB-models) or use the following command.
+
+```bash
+# Make sure you have git-lfs installed (https://git-lfs.com)
+git lfs install
+git clone https://huggingface.co/HymanH/VLKEB-models
+```
+
+
+To run the code, we also need to download the pre-trained pytorch models of LVLMs and others, then put them in proper directories.
 
 Here we put under 'hugging_cache' folder and 'openai' folder:
 ```bash
@@ -278,6 +292,9 @@ We would also like to extend our gratitude to all the other projects and contrib
 
 [data-shield]: https://img.shields.io/badge/Kaggle-Dataset-blue?style=for-the-badge&logo=kaggle
 [data-url]: https://www.kaggle.com/datasets/hymanh/vlkeb-data
+
+[model-shield]: https://img.shields.io/badge/HF-Models-yellow?style=for-the-badge&logo=huggingface&logoColor=yellow
+[model-url]: https://huggingface.co/HymanH/VLKEB-models
 
 [contributors-shield]: https://img.shields.io/github/contributors/VLKEB/VLKEB.svg?style=for-the-badge
 [contributors-url]: https://github.com/VLKEB/VLKEB/graphs/contributors
