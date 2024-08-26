@@ -20,7 +20,7 @@ inner_params:
 
 # Method
 alg: SERAC_MULTI
-lr: 1e-5
+lr: 5e-5
 edit_lr: 1e-2
 seed: 0
 lr_lr: 0.0
@@ -51,7 +51,7 @@ model_save_pt: 5000
 edit_bs: 1
 silent: False
 #max_epochs: 1
-max_iters: 50000
+max_iters: 25000
 log_interval: 100
 val_interval: 5000
 early_stop_patience: 10000

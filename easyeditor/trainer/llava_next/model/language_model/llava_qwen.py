@@ -63,8 +63,6 @@ class LlavaQwenForCausalLM(Qwen2ForCausalLM, LlavaMetaForCausalLM):
 
         self.model = LlavaQwenModel(config)
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
-        print("***********vocab_size", config.vocab_size)
-        print("************** lm head", self.lm_head.weight.shape)
         # Initialize weights and apply final processing
         self.post_init()
         self.tokenizer = AutoTokenizer.from_pretrained('hugging_cache/llava-onevision-qwen2-7b-ov', use_fast=False)
@@ -118,44 +116,23 @@ class LlavaQwenForCausalLM(Qwen2ForCausalLM, LlavaMetaForCausalLM):
             targets
         ) = self.prepare_inputs_from_batch(samples)
 
-        # outputs = super().forward(
-        #         input_ids=input_ids,
-        #         attention_mask=attention_mask,
-        #         position_ids=None,
-        #         past_key_values=None,
-        #         inputs_embeds=inputs_embeds,
-        #         output_hidden_states=True,
-        #         labels=targets,
-        #         return_dict=True,
-        #     )
-        outputs = self.model(
+        outputs = super().forward(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
                 position_ids=None,
                 past_key_values=None,
                 inputs_embeds=inputs_embeds,
                 output_hidden_states=True,
+                labels=targets,
                 return_dict=True,
             )
 
-        hidden_states = outputs[0]
-        logits = self.lm_head(hidden_states)
-        print(self.lm_head.weight.shape)
-
-        # print("output.logits shape", outputs.logits.shape)
-
-        if torch.isnan(logits).any():
+        if torch.isnan(outputs.logits).any():
             print("LLaVA-OV logits has nan!!!!!!!!!!!!!!!")
 
-        # return LLaVAOutput(
-        #     loss=outputs.loss,
-        #     logits=outputs.logits,
-        #     labels=targets,
-        #     attention_mask=attention_mask
-        # )
         return LLaVAOutput(
-            loss=None,
-            logits=logits,
+            loss=outputs.loss,
+            logits=outputs.logits,
             labels=targets,
             attention_mask=attention_mask
         )

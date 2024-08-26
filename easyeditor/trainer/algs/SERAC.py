@@ -69,7 +69,7 @@ class SERAC_MULTI(EditableModel):
                             v.requires_grad = False
                 elif config.model_name == "llava-ov":
                     from transformers import Qwen2ForCausalLM
-                    self.replacement = Qwen2ForCausalLM.from_pretrained(config.small_name)
+                    self.replacement = Qwen2ForCausalLM.from_pretrained(config.small_name, device_map=config.device)
                     for k, v in self.replacement.named_parameters():
                         if '27' in k:
                             v.requires_grad = True
@@ -362,6 +362,9 @@ class SERAC_MULTI(EditableModel):
         return self.model.generate(*args, **kwargs)
 
     def forward(self, *inputs, return_logits_only=True, eps=torch.finfo(torch.float32).eps, pos_pairs=None, **kwargs):
+        if self.config.model_name == "llava-ov":
+            if self.model.device != f"cuda:{int(self.config.device)+1}":
+                self.model.to(f"cuda:{int(self.config.device)+1}")
         grad_enabled = torch.is_grad_enabled()
         torch.set_grad_enabled(self.training)
 
@@ -374,6 +377,8 @@ class SERAC_MULTI(EditableModel):
                 else:
                     super_out = super().forward(*inputs, **kwargs).float()
                 torch.set_grad_enabled(grad_enabled)
+
+                super_out.logits = super_out.logits.to(f'cuda:{self.config.device}')
                 return super_out
             else:
                 if self.config.model_name == "blip2":
@@ -390,6 +395,7 @@ class SERAC_MULTI(EditableModel):
                     base_logits = base_logits.float()
                 else:
                     base_logits = super().forward(*inputs, **kwargs).float()
+                base_logits = base_logits.clone().detach().to(f'cuda:{self.config.device}')
                 if soft:
                     if base_logits.dim() == 3:
                         base_probs = base_logits.softmax(-1)
@@ -569,18 +575,19 @@ class SERAC_MULTI(EditableModel):
                         inputs_embeds,
                         targets
                     ) = self.model.prepare_inputs_labels_for_multimodal(
-                        input_ids,
+                        input_ids.to(self.model.device),
                         None,
-                        attention_mask,
+                        attention_mask.to(self.model.device),
                         None,
-                        targets,
-                        image
+                        targets.to(self.model.device),
+                        image.to(self.model.device)
                     )
+                    # print("model device", self.model.device)
                     rep_cls_logits = self.replacement(
-                        inputs_embeds=inputs_embeds,
-                        attention_mask=attention_mask,
+                        inputs_embeds=inputs_embeds.to(self.replacement.device),
+                        attention_mask=attention_mask.to(self.replacement.device),
                         return_dict=True,
-                        labels=targets,
+                        labels=targets.to(self.replacement.device),
                     ).logits[:, -base_probs.shape[1]:, :]
                 else:
                     rep_cls_logits = _logits(self.replacement(**rep_cls_inputs))[:, -base_probs.shape[1]:, :]
@@ -621,8 +628,6 @@ class SERAC_MULTI(EditableModel):
             if rep_weight.device != base_probs.device:
                 rep_weight = rep_weight.to(base_probs.device)
             if base_probs.dim() == 3:
-                print("\n", self.model.lm_head.weight.shape)
-                print("\n", base_probs.shape, rep_cls_logits.shape, rep_weight.shape, "\n")
                 mixture_logits = ((1 - rep_weight) * base_probs + rep_weight * rep_cls_logits.softmax(-1) + eps).log()
             else:
                 mixture_logits = ((1 - rep_weight) * base_probs + rep_weight * rep_cls_logits.sigmoid() + eps).log()
@@ -635,6 +640,8 @@ class SERAC_MULTI(EditableModel):
                 if rep_cls_logits.device != mixture_logits.device:
                     rep_cls_logits.to(mixture_logits.device)
                 mixture_logits[rep_idxs] = rep_cls_logits[rep_idxs]
+        
+        # print("\n logits device,", mixture_logits.device)
 
         torch.set_grad_enabled(grad_enabled)
         if return_logits_only:

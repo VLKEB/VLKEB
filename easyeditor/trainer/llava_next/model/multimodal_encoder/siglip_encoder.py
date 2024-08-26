@@ -544,7 +544,7 @@ class SigLipVisionTower(nn.Module):
 
         self.is_loaded = False
 
-        self.config = SigLipVisionConfig()
+        self.config = SigLipVisionConfig.from_pretrained(vision_tower)
 
         self.vision_tower_name = vision_tower
 
@@ -568,7 +568,8 @@ class SigLipVisionTower(nn.Module):
             rank0_print("{} is already loaded, `load_model` called again, skipping.".format(self.vision_tower_name))
             return
 
-        self.vision_tower = SigLipVisionModel.from_pretrained(self.vision_tower_name, device_map=device_map)
+        # self.vision_tower = SigLipVisionModel.from_pretrained(self.vision_tower_name, device_map=device_map)
+        self.vision_tower = SigLipVisionModel(self.config)
 
         del self.vision_tower.vision_model.encoder.layers[-1:]
         self.vision_tower.vision_model.head = nn.Identity()
