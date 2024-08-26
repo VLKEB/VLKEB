@@ -11,6 +11,7 @@ from collections import OrderedDict
 from .processor.base_dataset import BaseDataset
 from .processor.blip_processors import BlipImageEvalProcessor
 from ..trainer.utils import dict_to
+from ..trainer.llava_next.model.multimodal_encoder.siglip_encoder import SigLipImageProcessor
 from PIL import Image
 import random
 import typing
@@ -30,6 +31,8 @@ class CaptionDataset(BaseDataset):
             vis_processor = BlipImageEvalProcessor(image_size=364, mean=None, std=None)
         elif config.model_class == "LLaVA":
             vis_processor = transformers.CLIPImageProcessor.from_pretrained("openai/clip-vit-large-patch14-336")
+        elif config.model_class == "llava-ov":
+            vis_processor = SigLipImageProcessor()
         else:
             raise NotImplementedError("unknown model class")
 
@@ -143,6 +146,10 @@ class CaptionDataset(BaseDataset):
             image = self.vis_processor(image, return_tensors='pt')['pixel_values'].to(dtype=torch.float16)
             rephrase_image = self.vis_processor(rephrase_image, return_tensors='pt')['pixel_values'].to(dtype=torch.float16)
             locality_image = self.vis_processor(locality_image, return_tensors='pt')['pixel_values'].to(dtype=torch.float16)
+        elif self.config.model_class == "llava-ov":
+            image = self.vis_processor(image, return_tensors='pt')['pixel_values']
+            rephrase_image = self.vis_processor(rephrase_image, return_tensors='pt')['pixel_values']
+            locality_image = self.vis_processor(locality_image, return_tensors='pt')['pixel_values']
         else:
             raise NotImplementedError
 
@@ -172,7 +179,6 @@ class CaptionDataset(BaseDataset):
         edit_inner = {}
         edit_inner['image'] = torch.stack(image, dim=0)
         edit_inner['text_input'] = [" ".join([s, t]) for s, t in zip(src, trg)]
-        edit_inner['labels'] = trg
         edit_inner['prompts_len'] = [len(self.tok.encode(s, add_special_tokens=False)) for s in src]
         edit_inner['labels'] = self.tok(trg, add_special_tokens=False, return_tensors="pt",)["input_ids"]
         
@@ -180,7 +186,6 @@ class CaptionDataset(BaseDataset):
         edit_outer = {}
         edit_outer['image'] = torch.stack(image, dim=0)
         edit_outer['text_input'] = [" ".join([r, t]) for r, t in zip(rephrase, trg)]
-        edit_outer['labels'] = trg
         edit_outer['prompts_len'] = [len(self.tok.encode(r, add_special_tokens=False)) for r in rephrase]
         edit_outer['labels'] = self.tok(trg, add_special_tokens=False, return_tensors="pt",)["input_ids"]
             
@@ -188,7 +193,6 @@ class CaptionDataset(BaseDataset):
         edit_outer_image = {}
         edit_outer_image['image'] = torch.stack(image_rephrase, dim=0)
         edit_outer_image['text_input'] = [" ".join([s, t]) for s, t in zip(src, trg)]
-        edit_outer_image['labels'] = trg
         edit_outer_image['prompts_len'] = [len(self.tok.encode(s, add_special_tokens=False)) for s in src]
         edit_outer_image['labels'] = self.tok(trg, add_special_tokens=False, return_tensors="pt",)["input_ids"]
 
@@ -197,16 +201,16 @@ class CaptionDataset(BaseDataset):
         loc = {}
         loc['image'] = None
         loc['text_input'] = [" ".join([q, a]) for q, a in zip(loc_q, loc_a)]
-        loc['labels'] = loc_a
         loc['prompts_len'] = [len(self.tok.encode(q, add_special_tokens=False)) for q in loc_q]
         loc['labels'] = self.tok(loc_a, add_special_tokens=False, return_tensors="pt",)["input_ids"]
         
         # m_loc
         loc_image = {}
         loc_image['image'] = torch.stack(m_loc_image, dim=0)
-        loc_image['text_input'] = [" ".join([q, a]) for q, a in zip(m_loc_q, m_loc_a)]
-        loc_image['labels'] = m_loc_a
-        loc_image['prompts_len'] = [len(self.tok.encode(q, add_special_tokens=False)) for q in m_loc_q]
+        # loc_image['text_input'] = [" ".join([q, a]) for q, a in zip(m_loc_q, m_loc_a)]
+        # loc_image['prompts_len'] = [len(self.tok.encode(q, add_special_tokens=False)) for q in m_loc_q]
+        loc_image['text_input'] = [self.prompt.format(q) + a for q, a in zip(m_loc_q, m_loc_a)]
+        loc_image['prompts_len'] = [len(self.tok.encode(self.prompt.format(q), add_special_tokens=False)) for q in m_loc_q]
         loc_image['labels'] = self.tok(m_loc_a, add_special_tokens=False, return_tensors="pt",)["input_ids"]
 
         # cond
@@ -225,7 +229,6 @@ class CaptionDataset(BaseDataset):
                 port = {}
                 port['image'] = torch.stack(image, dim=0)
                 port['text_input'] = [' '.join([port_q, port_a])]
-                port['labels'] = [port_a]
                 port['prompts_len'] = [len(self.tok.encode(port_q, add_special_tokens=False))]
                 port['labels'] = self.tok([port_a], add_special_tokens=False, return_tensors="pt",)["input_ids"]
                 edit_ports.append(port)

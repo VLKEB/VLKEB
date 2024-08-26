@@ -67,6 +67,14 @@ class SERAC_MULTI(EditableModel):
                             v.requires_grad = True
                         else:
                             v.requires_grad = False
+                elif config.model_name == "llava-ov":
+                    from transformers import Qwen2ForCausalLM
+                    self.replacement = Qwen2ForCausalLM.from_pretrained(config.small_name)
+                    for k, v in self.replacement.named_parameters():
+                        if '27' in k:
+                            v.requires_grad = True
+                        else:
+                            v.requires_grad = False
                 else:
                     self.replacement = getattr(transformers, config.model_class).from_pretrained(config.small_name)
                 if self.replacement_tok.sep_token is None and "gpt" not in config.name.lower():
@@ -88,7 +96,7 @@ class SERAC_MULTI(EditableModel):
                 self.scale = scale
         if config.model_name in ["blip2", "minigpt4"]:
             self.language_projection = torch.nn.Linear(self.model.Qformer.config.hidden_size, self.replacement.config.hidden_size)
-        elif config.model_name == "llava":
+        elif config.model_name in ["llava", "llava-ov"]:
             self.language_projection = None
         else:
             raise NotImplementedError('unkown model name')
@@ -114,6 +122,10 @@ class SERAC_MULTI(EditableModel):
             for k in self.replacement.state_dict().keys():
                 if '31' not in k:
                     del state_dict[f"replacement.{k}"]
+        elif self.config.model_name == "llava-ov":
+            for k in self.replacement.state_dict().keys():
+                if '27' not in k:
+                    del state_dict[f"replacement.{k}"]
         state_dict["model_config"] = self.model.config  # Include model config
         return state_dict
 
@@ -138,6 +150,8 @@ class SERAC_MULTI(EditableModel):
         def ok_to_miss(k):
             if self.config.model_name == "minigpt4" or self.config.model_name == "llava":
                 return k.startswith("model.") or (self.config.freeze_cntr and k.startswith("replacement.")) or (k.startswith("replacement.") and ("31" not in k))
+            if self.config.model_name == "llava-ov":
+                return k.startswith("model.") or (self.config.freeze_cntr and k.startswith("replacement.")) or (k.startswith("replacement.") and ("27" not in k))
             return k.startswith("model.") or (self.config.freeze_cntr and k.startswith("replacement."))
         missing_keys = [k for k in res.missing_keys if not ok_to_miss(k)]
         assert len(missing_keys) == 0, f"Should only have missing keys for model: {missing_keys}."
@@ -171,6 +185,11 @@ class SERAC_MULTI(EditableModel):
                     if '31' in k:
                         params_extend.append(v)
                 model_params.extend(params_extend)
+            elif self.config.model_name == "llava-ov":
+                params_extend = []
+                for k, v in self.replacement.named_parameters():
+                    if '27' in k:
+                        params_extend.append(v)
             else:
                 model_params.extend(list(self.replacement.parameters()))
 
@@ -189,13 +208,13 @@ class SERAC_MULTI(EditableModel):
         def detokenize(toks, tok):
             tokens = toks.masked_fill(toks == -100, tok.pad_token_id)
             return tok.batch_decode(tokens, skip_special_tokens=True)
-        if self.config.model_name == "minigpt4" or self.config.model_name == "blip2" or self.config.model_name == "llava":
+        if self.config.model_name in ["minigpt4", "blip2", "llava", "llava-ov"]:
             inputs = batch["text_input"]
         else:
             inputs = detokenize(batch["input_ids"], self.replacement_tok)
         if "bert" in self.config.name:
             labels = ["" for _ in batch["labels"]]
-        elif self.config.model_name == "minigpt4" or self.config.model_name == "blip2" or self.config.model_name == "llava":
+        elif self.config.model_name in ["minigpt4", "blip2", "llava", "llava-ov"]:
             labels = batch["labels"]
             if isinstance(labels, torch.Tensor):
                 labels = detokenize(labels, self.replacement_tok)
@@ -278,7 +297,7 @@ class SERAC_MULTI(EditableModel):
         # print('context', cache_contexts)
         selected_contexts = [cache_contexts[idx.item()] for idx in idxs]
         # print('selected', selected_contexts)
-        if self.config.model_name == "minigpt4" or self.config.model_name == "blip2" or self.config.model_name == "llava":
+        if self.config.model_name in ["minigpt4", "blip2", "llava", "llava-ov"]:
             test_inputs = kwargs["text_input"]
         else:
             test_inputs = self.replacement_tok.batch_decode(kwargs["input_ids"], skip_special_tokens=True)
@@ -294,7 +313,7 @@ class SERAC_MULTI(EditableModel):
             if 'labels' in kwargs.keys():
                 rep_kwargs["labels"] = kwargs["labels"]
 
-        if self.config.model_name == "minigpt4" or self.config.model_name == "blip2" or self.config.model_name == "llava":
+        if self.config.model_name in ["minigpt4", "blip2", "llava", "llava-ov"]:
             # Add 'ignore' labels for the prepended cache inputs
             pre = torch.full((kwargs["labels"].shape[0], rep_kwargs["input_ids"].shape[-1] - kwargs["labels"].shape[-1]), -100,
                              device=kwargs["labels"].device)
@@ -303,7 +322,7 @@ class SERAC_MULTI(EditableModel):
 
     def run_classifier(self, *inputs, **kwargs):
         cache_inputs = self.build_cls_cache_inputs()
-        if self.config.model_name == "minigpt4" or self.config.model_name == "blip2" or self.config.model_name == "llava":
+        if self.config.model_name in ["minigpt4", "blip2", "llava", "llava-ov"]:
             test_inputs = inputs[0]["text_input"]
         else:
             test_inputs = self.replacement_tok.batch_decode(kwargs["input_ids"], skip_special_tokens=True)
@@ -350,7 +369,7 @@ class SERAC_MULTI(EditableModel):
         soft = (not self.config.supervised) or self.config.soft_weighting
         with torch.no_grad():
             if len(self.cache_inputs) == 0:
-                if self.config.model_name == "blip2" or self.config.model_name == "minigpt4" or self.config.model_name == "llava":
+                if self.config.model_name in ["minigpt4", "blip2", "llava", "llava-ov"]:
                     super_out = self.model(*inputs, **kwargs)
                 else:
                     super_out = super().forward(*inputs, **kwargs).float()
@@ -364,7 +383,7 @@ class SERAC_MULTI(EditableModel):
                     if not isinstance(base_logits, torch.Tensor):
                         base_logits = base_logits.logits
                     base_logits = base_logits.float()
-                elif self.config.model_name == "minigpt4" or self.config.model_name == "llava":
+                elif self.config.model_name == "minigpt4" or self.config.model_name == "llava" or self.config.model_name == "llava-ov":
                     base_logits = super().forward(*inputs, **kwargs)
                     if not isinstance(base_logits, torch.Tensor):
                         base_logits = base_logits.logits
@@ -379,7 +398,7 @@ class SERAC_MULTI(EditableModel):
                     del base_logits
 
         cls_sims, cls_idxs, cls_logits = self.run_classifier(*inputs, **kwargs)
-        if self.config.model_name == "minigpt4" or self.config.model_name == "blip2" or self.config.model_name == "llava":
+        if self.config.model_name in ["minigpt4", "blip2", "llava", "llava-ov"]:
             rep_cls_inputs = self.build_rep_input_tokens(inputs[0], cls_idxs)
         else:
             rep_cls_inputs = self.build_rep_input_tokens(kwargs, cls_idxs)
@@ -528,6 +547,43 @@ class SERAC_MULTI(EditableModel):
                     ).logits[:, -base_probs.shape[1]:, :]
                 else:
                     rep_cls_logits = _logits(self.replacement(**rep_cls_inputs))[:, -base_probs.shape[1]:, :]
+            elif self.config.model_name == "llava-ov":
+                rep_cls_labels = rep_cls_inputs.pop("labels")
+                image = inputs[0]["image"]
+                if image is not None:
+                    from ..llava_next.constants import IGNORE_INDEX, IMAGE_TOKEN_INDEX
+                    image = image.to(self.model.dtype)
+                    input_ids = rep_cls_inputs["input_ids"]
+                    attention_mask = rep_cls_inputs["attention_mask"]
+                    image_token_ids = torch.ones((input_ids.shape[0]), dtype=input_ids.dtype, device=input_ids.device).fill_(IMAGE_TOKEN_INDEX)
+                    input_ids = torch.cat((input_ids[:, :1], image_token_ids.unsqueeze(1), input_ids[:, 1:]), dim=1)
+
+                    image_att_mask = torch.ones((input_ids.shape[0]), dtype=input_ids.dtype, device=input_ids.device)
+                    attention_mask = torch.cat((attention_mask[:, :1], image_att_mask.unsqueeze(1), attention_mask[:, 1:]), dim=1)
+                    
+                    targets = torch.cat((rep_cls_labels[:, :1], image_token_ids.unsqueeze(1), rep_cls_labels[:, 1:]), dim=1)
+                    (   input_ids,
+                        _,
+                        attention_mask,
+                        _,
+                        inputs_embeds,
+                        targets
+                    ) = self.model.prepare_inputs_labels_for_multimodal(
+                        input_ids,
+                        None,
+                        attention_mask,
+                        None,
+                        targets,
+                        image
+                    )
+                    rep_cls_logits = self.replacement(
+                        inputs_embeds=inputs_embeds,
+                        attention_mask=attention_mask,
+                        return_dict=True,
+                        labels=targets,
+                    ).logits[:, -base_probs.shape[1]:, :]
+                else:
+                    rep_cls_logits = _logits(self.replacement(**rep_cls_inputs))[:, -base_probs.shape[1]:, :]
             else:
                 rep_cls_logits = _logits(self.replacement(**rep_cls_inputs))
 
@@ -565,6 +621,8 @@ class SERAC_MULTI(EditableModel):
             if rep_weight.device != base_probs.device:
                 rep_weight = rep_weight.to(base_probs.device)
             if base_probs.dim() == 3:
+                print("\n", self.model.lm_head.weight.shape)
+                print("\n", base_probs.shape, rep_cls_logits.shape, rep_weight.shape, "\n")
                 mixture_logits = ((1 - rep_weight) * base_probs + rep_weight * rep_cls_logits.softmax(-1) + eps).log()
             else:
                 mixture_logits = ((1 - rep_weight) * base_probs + rep_weight * rep_cls_logits.sigmoid() + eps).log()

@@ -296,12 +296,56 @@ def test_IKE_LLaVA():
     
     print_result(metrics, save_path='results/IKE/LLAVA_results_portability.txt')
 
+####################### LLAVA-ONEVISION ##########################
+def train_MEND_LLaVA_OV():
+    hparams = MENDMultimodalTrainingHparams.from_hparams('hparams/TRAINING/MEND/llava-ov.yaml')
+    train_ds = CaptionDataset(train_json_path, config=hparams)
+    eval_ds = CaptionDataset(eval_json_path, config=hparams, hop=hop)
+    trainer = MultimodalTrainer(
+        config=hparams,
+        train_set=train_ds,
+        val_set=eval_ds
+    )
+    
+    trainer.run()
+
+def train_SERAC_LLaVA_OV():
+    hparams = SERACMultimodalTrainingHparams.from_hparams('hparams/TRAINING/SERAC/llava-ov.yaml')
+    train_ds = CaptionDataset(train_json_path, config=hparams)
+    eval_ds = CaptionDataset(eval_json_path, config=hparams, hop=hop)
+    trainer = MultimodalTrainer(
+        config=hparams,
+        train_set=train_ds,
+        val_set=eval_ds
+    )
+    trainer.run()
+
+def test_FT_LLaVA_OV():
+    hparams = FTMultimodalHparams.from_hparams('hparams/FT/llava-ov.yaml')
+    eval_ds = CaptionDataset(eval_json_path, config=hparams, hop=hop)
+    trainer = MultimodalTrainer(
+        config=hparams,
+        train_set=eval_ds,
+        val_set=eval_ds
+    )
+    trainer.run()
+
+def test_FT_LLaVA_OV_mmproj():
+    hparams = FTMultimodalHparams.from_hparams('hparams/FT/llava-ov_mmproj.yaml')
+    eval_ds = CaptionDataset(eval_json_path, config=hparams, hop=hop)
+    trainer = MultimodalTrainer(
+        config=hparams,
+        train_set=eval_ds,
+        val_set=eval_ds
+    )
+    trainer.run()
+
 if __name__ == "__main__":
     function_name = sys.argv[1]
     hop = sys.argv[2] if len(sys.argv) > 2 else None
 
-    train_json_path = 'datasets/train.json'
-    eval_json_path = 'datasets/eval_multihop.json'
+    train_json_path = '/cpfs/29f69eb5e2e60f26/user/GPT/pretrain/mm_intern/hh/data_zoo/vlkeb/train.json'
+    eval_json_path = '/cpfs/29f69eb5e2e60f26/user/GPT/pretrain/mm_intern/hh/data_zoo/vlkeb/eval.json'
     if function_name not in globals() or not callable(globals()[function_name]):
         print(f"Error: Function '{function_name}' does not exist.")
         sys.exit(1)

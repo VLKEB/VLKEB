@@ -110,6 +110,12 @@ def get_model(config):
         
         # for name, param in model.named_parameters():
         #     print(f"{name}: {param.shape}")
+    elif config.model_name == "llava-ov":
+        from .llava_next.model.builder import load_pretrained_model
+        if config.alg == 'ft':
+            _, model, _, _ = load_pretrained_model(model_path=config.name, model_name=config.name, attn_implementation='eager' , model_base=None, device_map=config.device)
+        else:
+            _, model, _, _ = load_pretrained_model(model_path=config.name, model_name=config.name, model_base=None, device_map=config.device)
     else:
         ModelClass = getattr(transformers, config.model_class)
         LOG.info(

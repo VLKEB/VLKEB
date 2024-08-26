@@ -121,14 +121,15 @@ class BaseTrainer:
             "elapsed_time": time_delta_seconds(self.start_time),
             "step": self.global_iter,
         }
-        LOG.info(f"Saving model to {self.save_path}-step_{self.global_iter}.pt'")
+        LOG.info(f"Saving model to {self.save_path}'")
 
-        # if os.path.exists(self.save_path):
-        #     bk_path = f"{self.save_path}.bk"
-        #     LOG.info(f"Moving old archive to {bk_path}")
-        #     os.rename(self.save_path, bk_path)
+        if os.path.exists(self.save_path):
+            bk_path = f"{self.save_path}.bk"
+            LOG.info(f"Moving old archive to {bk_path}")
+            os.rename(self.save_path, bk_path)
 
-        torch.save(obj, self.save_path+f'-step_{self.global_iter}.pt')
+        # torch.save(obj, self.save_path+f'-step_{self.global_iter}.pt')
+        torch.save(obj, self.save_path)
         LOG.info("Write complete.")
 
     def echo(self, train_step, info_dict, pretty=False):
