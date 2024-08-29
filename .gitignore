@@ -9,3 +9,4 @@ openai
 hugging_cache
 *.ttf
 tmp*
+google/
