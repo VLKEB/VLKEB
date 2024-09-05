@@ -53,18 +53,8 @@ class BaseTrainer:
         self.train_set = train_set
         self.val_set = val_set
 
-        if 'minigpt4' in self.config.model_name.lower() or 'blip2' in self.config.model_name.lower() or 'llava' in self.config.model_name.lower():
+        if 'minigpt4' in self.config.model_name.lower() or 'blip2' in self.config.model_name.lower() or 'llava' in self.config.model_name.lower() or 'qwen-vl' in self.config.model_name.lower() or "owl-2" in self.config.model_name.lower():
             collate_fn = train_set.collate_fn
-        elif 't5' in self.config.model_class.lower():
-            collate_fn = train_set.collate_fn
-        elif 'gpt' in self.config.model_class.lower():
-            collate_fn = train_set.collate_gpt_fn
-        elif 'llama' in self.config.model_class.lower():
-            collate_fn = train_set.collate_gpt_fn
-        elif 'automodel' in self.config.model_class.lower():
-            collate_fn = train_set.collate_gpt_fn
-        elif 'qwen' in self.config.model_name.lower():
-            collate_fn = train_set.collate_gpt_fn
         else:
             raise NotImplementedError(f'Model {self.config.model_class} not supported yet.')
 
@@ -165,14 +155,13 @@ class BaseTrainer:
         self.epoches = round(float(self.config.max_iters) / (len(self.train_set) / self.config.batch_size))
         self.global_iter = 0
         for epoch in range(self.epoches):
-            for batch in tqdm(self.train_loader, ncols=120, desc=f'Epoch {epoch}/{self.epoches}'):
+            for batch in tqdm(self.train_loader, ncols=120, desc=f'Epoch {epoch+1}/{self.epoches}'):
                 self.global_iter += 1
                 if self.global_iter >= self.config.max_iters:
                     break
                 if not self.config.eval_only:
                     train_info = self.train_step(batch)
                     averager.add(train_info)
-
                     if self.global_iter % self.config.log_interval == 0:
                         avg_info = averager.average()
                         averager.reset()

@@ -296,6 +296,166 @@ def test_IKE_LLaVA():
     
     print_result(metrics, save_path='results/IKE/LLAVA_results_portability.txt')
 
+
+
+####################### Qwen-VL ##########################
+def train_MEND_QwenVL():
+    hparams = MENDMultimodalTrainingHparams.from_hparams('hparams/TRAINING/MEND/qwenvl.yaml')
+    train_ds = CaptionDataset(train_json_path, config=hparams)
+    eval_ds = CaptionDataset(eval_json_path, config=hparams, hop=hop)
+    trainer = MultimodalTrainer(
+        config=hparams,
+        train_set=train_ds,
+        val_set=eval_ds
+    )
+    
+    trainer.run()    
+
+def test_MEND_QwenVL():
+    hparams = MENDMultimodalTrainingHparams.from_hparams('hparams/MEND/qwenvl.yaml')
+    eval_ds = CaptionDataset(eval_json_path, config=hparams, hop=hop)
+    trainer = MultimodalTrainer(
+        config=hparams,
+        train_set=eval_ds,
+        val_set=eval_ds
+    )
+    
+    trainer.run()    
+
+def train_SERAC_QwenVL():
+    hparams = SERACMultimodalTrainingHparams.from_hparams('hparams/TRAINING/SERAC/qwenvl.yaml')
+    train_ds = CaptionDataset(train_json_path, config=hparams)
+    eval_ds = CaptionDataset(eval_json_path, config=hparams, hop=hop)
+    trainer = MultimodalTrainer(
+        config=hparams,
+        train_set=train_ds,
+        val_set=eval_ds
+    )
+    trainer.run()    
+
+def test_SERAC_QwenVL():
+    hparams = SERACMultimodalTrainingHparams.from_hparams('hparams/SERAC/qwenvl.yaml')
+    eval_ds = CaptionDataset(eval_json_path, config=hparams, hop=hop)
+    trainer = MultimodalTrainer(
+        config=hparams,
+        train_set=eval_ds,
+        val_set=eval_ds
+    )
+    
+    trainer.run()   
+
+def test_FT_QwenVL():
+    hparams = FTMultimodalHparams.from_hparams('hparams/FT/qwenvl.yaml')
+    eval_ds = CaptionDataset(eval_json_path, config=hparams, hop=hop)
+    trainer = MultimodalTrainer(
+        config=hparams,
+        train_set=eval_ds,
+        val_set=eval_ds
+    )
+    trainer.run()
+
+def test_FT_QwenVL_ViT():
+    hparams = FTMultimodalHparams.from_hparams('hparams/FT/qwenvl_vit.yaml')
+    eval_ds = CaptionDataset(eval_json_path, config=hparams, hop=hop)
+    trainer = MultimodalTrainer(
+        config=hparams,
+        train_set=eval_ds,
+        val_set=eval_ds
+    )
+    trainer.run()
+
+def test_IKE_QwenVL():
+    hparams = IKEMultimodalHyperParams.from_hparams('hparams/IKE/qwenvl.yaml')
+    editor = MultimodalEditor.from_hparams(hparams)
+    eval_ds = CaptionDataset(eval_json_path, config=hparams, hop=hop)
+    metrics, edited_model, _ = editor.edit_dataset(
+        ds=eval_ds,
+        train_ds='train_ds',
+        keep_original_weight=True        
+    )
+    
+    print_result(metrics, save_path=os.path.join(hparams.results_dir,'IKE/Owl2_results_portability.txt'))
+
+
+
+####################### Owl-2 ##########################
+def train_MEND_Owl2():
+    hparams = MENDMultimodalTrainingHparams.from_hparams('hparams/TRAINING/MEND/owl2.yaml')
+    train_ds = CaptionDataset(train_json_path, config=hparams)
+    eval_ds = CaptionDataset(eval_json_path, config=hparams, hop=hop)
+    trainer = MultimodalTrainer(
+        config=hparams,
+        train_set=train_ds,
+        val_set=eval_ds
+    )
+    
+    trainer.run()    
+
+def test_MEND_Owl2():
+    hparams = MENDMultimodalTrainingHparams.from_hparams('hparams/MEND/owl2.yaml')
+    eval_ds = CaptionDataset(eval_json_path, config=hparams, hop=hop)
+    trainer = MultimodalTrainer(
+        config=hparams,
+        train_set=eval_ds,
+        val_set=eval_ds
+    )
+    
+    trainer.run()    
+
+def train_SERAC_Owl2():
+    hparams = SERACMultimodalTrainingHparams.from_hparams('hparams/TRAINING/SERAC/owl2.yaml')
+    train_ds = CaptionDataset(train_json_path, config=hparams)
+    eval_ds = CaptionDataset(eval_json_path, config=hparams, hop=hop)
+    trainer = MultimodalTrainer(
+        config=hparams,
+        train_set=train_ds,
+        val_set=eval_ds
+    )
+    trainer.run()    
+
+def test_SERAC_Owl2():
+    hparams = SERACMultimodalTrainingHparams.from_hparams('hparams/SERAC/owl2.yaml')
+    eval_ds = CaptionDataset(eval_json_path, config=hparams, hop=hop)
+    trainer = MultimodalTrainer(
+        config=hparams,
+        train_set=eval_ds,
+        val_set=eval_ds
+    )
+    
+    trainer.run()   
+
+def test_FT_Owl2():
+    hparams = FTMultimodalHparams.from_hparams('hparams/FT/owl2.yaml')
+    eval_ds = CaptionDataset(eval_json_path, config=hparams, hop=hop)
+    trainer = MultimodalTrainer(
+        config=hparams,
+        train_set=eval_ds,
+        val_set=eval_ds
+    )
+    trainer.run()
+
+def test_FT_Owl2_ViT():
+    hparams = FTMultimodalHparams.from_hparams('hparams/FT/owl2_vit.yaml')
+    eval_ds = CaptionDataset(eval_json_path, config=hparams, hop=hop)
+    trainer = MultimodalTrainer(
+        config=hparams,
+        train_set=eval_ds,
+        val_set=eval_ds
+    )
+    trainer.run()
+
+def test_IKE_Owl2():
+    hparams = IKEMultimodalHyperParams.from_hparams('hparams/IKE/owl2.yaml')
+    editor = MultimodalEditor.from_hparams(hparams)
+    eval_ds = CaptionDataset(eval_json_path, config=hparams, hop=hop)
+    metrics, edited_model, _ = editor.edit_dataset(
+        ds=eval_ds,
+        train_ds='train_ds',
+        keep_original_weight=True        
+    )
+    
+    print_result(metrics, save_path=os.path.join(hparams.results_dir,'IKE/Owl2_results_portability.txt'))
+
 if __name__ == "__main__":
     function_name = sys.argv[1]
     hop = sys.argv[2] if len(sys.argv) > 2 else None

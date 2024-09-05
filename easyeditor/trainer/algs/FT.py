@@ -47,6 +47,14 @@ class FT(EditableModel):
     def forward(self, *inputs, **kwargs):
         if 'minigpt4' in self.config.model_name.lower() or 'blip' in self.config.model_name.lower() or 'llava' in self.config.model_name.lower():
             outputs = self.model(*inputs, **kwargs)
+        elif "qwen-vl" in self.config.model_name.lower():
+            outputs = _logits(self.model(inputs[0]['inputs'].to(self.model.device), **kwargs))
+        elif "owl2" in self.model.config.name_or_path.lower():
+            input_ids, image = inputs[0]['input_ids'].to(self.model.device), inputs[0]['image'].to(self.model.device, dtype=torch.float32)
+            # from torch.cuda.amp import autocast
+            # with autocast():
+            outputs = _logits(self.model.train()(input_ids, 
+                                        images=image))
         else:
             raise not NotImplementedError("Model not supported")
         return outputs
@@ -101,8 +109,39 @@ class FT(EditableModel):
                 loss.backward()
 
                 opt.step()
+        elif "qwen-vl" in self.config.model_name.lower():
+            pbar = trange(self.config.num_steps, ncols=120)
+            for it in pbar:
+                opt.zero_grad()
 
+                outputs = self.model(batch['inputs'].to(self.model.device))
+                if not isinstance(outputs, torch.Tensor):
+                    outputs = outputs.logits
+                loss = self.edit_loss_fn(self.config, outputs, batch["labels"])["nll"]
+                pbar.set_postfix({"loss": loss.item()})
+                loss.backward()
+                
+                opt.step()
+        elif "owl-2" in self.config.model_name.lower():
+            # for p in pset:
+            #     for param in self.model.parameters():
+            #         if p == param:
+            #             param.requires_grad = True
+            pbar = trange(self.config.num_steps, ncols=120)
+            for it in pbar:
+                opt.zero_grad()
 
+                input_ids, image = batch['input_ids'], batch['image']
+                outputs = (self.model(input_ids.to(self.config.device), 
+                                         images=image.to(self.config.device, dtype=torch.float32)))
+                
+                if not isinstance(outputs, torch.Tensor):
+                    outputs = outputs.logits
+                loss = self.edit_loss_fn(self.config, outputs, batch["labels"])["nll"]
+                pbar.set_postfix({"loss": loss.item()})
+                loss.backward()
+
+                opt.step()
         else:
             raise not NotImplementedError("Model not supported")
 

@@ -285,70 +285,69 @@ def compute_icl_multimodal_edit_quality(
     # First, unpack rewrite evaluation record.
     target = record["target"]
     prompt = record["prompt"]
-    image = record["image"] if record["image"].is_cuda else record["image"].to(hparams.device)
+    image = record['image'].to(hparams.device) if torch.is_tensor(record['image']) and not record['image'].is_cuda else record['image']
     rephrase = record["rephrase_prompt"] if 'rephrase_prompt' in record.keys() else None
     rephrase_image = record["image_rephrase"] if 'image_rephrase' in record.keys() else None
     if rephrase_image is not None:
-        rephrase_image = rephrase_image if rephrase_image.is_cuda else rephrase_image.to(hparams.device)
-
+        rephrase_image = rephrase_image.to(hparams.device) if torch.is_tensor(rephrase_image) and not rephrase_image.is_cuda else rephrase_image
     ret = {}
 
     ###############################################################
-    # if "locality_prompt" in record.keys():
-    #     loc_q = record["locality_prompt"]
-    #     loc_a = record["locality_ground_truth"]
-    # if "multimodal_locality_image" in record.keys():
-    #     m_loc_image = record["multimodal_locality_image"] if record["multimodal_locality_image"].is_cuda else record["multimodal_locality_image"].to(hparams.device)
-    #     m_loc_q = record["multimodal_locality_prompt"]
-    #     m_loc_a = record["multimodal_locality_ground_truth"]
+    if "locality_prompt" in record.keys():
+        loc_q = record["locality_prompt"]
+        loc_a = record["locality_ground_truth"]
+    if "multimodal_locality_image" in record.keys():
+        m_loc_image = record['multimodal_locality_image'].to(hparams.device) if torch.is_tensor(record['multimodal_locality_image']) and not record['multimodal_locality_image'].is_cuda else record['multimodal_locality_image']
+        m_loc_q = record["multimodal_locality_prompt"]
+        m_loc_a = record["multimodal_locality_ground_truth"]
     
-    # new_fact = f'New Fact: {prompt} {target}\nPrompt: {prompt}'
+    new_fact = f'New Fact: {prompt} {target}\nPrompt: {prompt}'
 
+    if pre_edit:
+        edit_acc, _ = icl_multimodal_lm_eval(model, model_name, hparams, tok, icl_examples,
+                                       target, prompt, image)
+    else:
+        edit_acc, _ = icl_multimodal_lm_eval(model, model_name, hparams, tok, icl_examples,
+                                              target, new_fact, image)
+    ret = {
+        f"rewrite_acc": edit_acc
+    }
+    if rephrase is not None:
+        rephrase_acc, _ = icl_multimodal_lm_eval(model, model_name, hparams, tok, icl_examples,
+                               target, f'New Fact: {prompt} {target}\nPrompt: {rephrase}', image)
+        ret['rephrase_acc'] = rephrase_acc
+        
+    if "image_rephrase" in record.keys():
+        rephrase_image_acc, _ = icl_multimodal_lm_eval(model, model_name, hparams, tok, icl_examples,
+                               target, new_fact, rephrase_image)
+        ret['rephrase_image_acc'] = rephrase_image_acc
+    
     # if pre_edit:
-    #     edit_acc, _ = icl_multimodal_lm_eval(model, model_name, hparams, tok, icl_examples,
-    #                                    target, prompt, image)
+    #     ret['locality_acc'] = None
+    #     ret['locality_image_acc'] = None
     # else:
-    #     edit_acc, _ = icl_multimodal_lm_eval(model, model_name, hparams, tok, icl_examples,
-    #                                           target, new_fact, image)
-    # ret = {
-    #     f"rewrite_acc": edit_acc
-    # }
-    # if rephrase is not None:
-    #     rephrase_acc, _ = icl_multimodal_lm_eval(model, model_name, hparams, tok, icl_examples,
-    #                            target, f'New Fact: {prompt} {target}\nPrompt: {rephrase}', image)
-    #     ret['rephrase_acc'] = rephrase_acc
+    if not pre_edit:
+        if "locality_prompt" in record.keys():
+            pre_text_loc_logits = icl_multimodal_loc_logits(model, model_name, hparams, tok, [''], loc_a, loc_q, None)
+            post_text_loc_logits = icl_multimodal_loc_logits(model, model_name, hparams, tok, icl_examples, loc_a, f'New Fact: {prompt} {target}\nPrompt: {loc_q}', None)
+
+            pre_text_loc_logits_softmax_top_k = torch.topk(torch.nn.functional.softmax(pre_text_loc_logits.float(), dim=-1), k=1, dim=-1).indices
+            post_text_loc_logits_softmax_top_k = torch.topk(torch.nn.functional.softmax(post_text_loc_logits.float(), dim=-1), k=1, dim=-1).indices
+
+            locality_acc = sum(post_text_loc_logits_softmax_top_k.view(-1) == pre_text_loc_logits_softmax_top_k.view(-1))/post_text_loc_logits_softmax_top_k.view(-1).shape[0]
+
+            ret['locality_acc'] = locality_acc
         
-    # if "image_rephrase" in record.keys():
-    #     rephrase_image_acc, _ = icl_multimodal_lm_eval(model, model_name, hparams, tok, icl_examples,
-    #                            target, new_fact, rephrase_image)
-    #     ret['rephrase_image_acc'] = rephrase_image_acc
-    
-    # # if pre_edit:
-    # #     ret['locality_acc'] = None
-    # #     ret['locality_image_acc'] = None
-    # # else:
-    # if not pre_edit:
-    #     if "locality_prompt" in record.keys():
-    #         pre_text_loc_logits = icl_multimodal_loc_logits(model, model_name, hparams, tok, [''], loc_a, loc_q, None)
-    #         post_text_loc_logits = icl_multimodal_loc_logits(model, model_name, hparams, tok, icl_examples, loc_a, f'New Fact: {prompt} {target}\nPrompt: {loc_q}', None)
+        if "multimodal_locality_image" in record.keys():
+            pre_image_loc_logits = icl_multimodal_loc_logits(model, model_name, hparams, tok, [''], m_loc_a, m_loc_q, m_loc_image)
+            post_image_loc_logits = icl_multimodal_loc_logits(model, model_name, hparams, tok, icl_examples, m_loc_a, f'New Fact: {prompt} {target}\nPrompt: {m_loc_q}', m_loc_image)
 
-    #         pre_text_loc_logits_softmax_top_k = torch.topk(torch.nn.functional.softmax(pre_text_loc_logits.float(), dim=-1), k=1, dim=-1).indices
-    #         post_text_loc_logits_softmax_top_k = torch.topk(torch.nn.functional.softmax(post_text_loc_logits.float(), dim=-1), k=1, dim=-1).indices
+            pre_image_loc_logits_softmax_top_k = torch.topk(torch.nn.functional.softmax(pre_image_loc_logits.float(), dim=-1), k=10, dim=-1).indices
+            post_image_loc_logits_softmax_top_k = torch.topk(torch.nn.functional.softmax(post_image_loc_logits.float(), dim=-1), k=10, dim=-1).indices
 
-    #         locality_acc = sum(post_text_loc_logits_softmax_top_k.view(-1) == pre_text_loc_logits_softmax_top_k.view(-1))/post_text_loc_logits_softmax_top_k.view(-1).shape[0]
+            locality_image_acc = sum(post_image_loc_logits_softmax_top_k.view(-1) == pre_image_loc_logits_softmax_top_k.view(-1))/post_image_loc_logits_softmax_top_k.view(-1).shape[0]
 
-    #         ret['locality_acc'] = locality_acc
-        
-    #     if "multimodal_locality_image" in record.keys():
-    #         pre_image_loc_logits = icl_multimodal_loc_logits(model, model_name, hparams, tok, [''], m_loc_a, m_loc_q, m_loc_image)
-    #         post_image_loc_logits = icl_multimodal_loc_logits(model, model_name, hparams, tok, icl_examples, m_loc_a, f'New Fact: {prompt} {target}\nPrompt: {m_loc_q}', m_loc_image)
-
-    #         pre_image_loc_logits_softmax_top_k = torch.topk(torch.nn.functional.softmax(pre_image_loc_logits.float(), dim=-1), k=10, dim=-1).indices
-    #         post_image_loc_logits_softmax_top_k = torch.topk(torch.nn.functional.softmax(post_image_loc_logits.float(), dim=-1), k=10, dim=-1).indices
-
-    #         locality_image_acc = sum(post_image_loc_logits_softmax_top_k.view(-1) == pre_image_loc_logits_softmax_top_k.view(-1))/post_image_loc_logits_softmax_top_k.view(-1).shape[0]
-
-    #         ret['locality_image_acc'] = locality_image_acc
+            ret['locality_image_acc'] = locality_image_acc
     ###################################################################
 
 
@@ -401,7 +400,16 @@ def icl_multimodal_loc_logits(
     batch = prepare_multimodal_edit(hparams, tokenizer, target, [''.join(icl_examples) + f'{x}'], image) 
     
     with torch.no_grad():
-        outputs = model(batch)
+        if "qwen" in model.__class__.__name__.lower():
+            outputs = model(batch['inputs'].to(hparams.device))
+        elif "owl" in model.__class__.__name__.lower():
+            input_ids, image = batch['input_ids'], batch['image']
+            # from torch.cuda.amp import autocast
+            # with autocast():
+            outputs = model(input_ids.to(hparams.device), 
+                                        images=image.to(hparams.device, dtype=torch.float16))
+        else:
+            outputs = model(batch)
         if isinstance(outputs, torch.Tensor):
             logits = outputs.detach().cpu()
         else:
@@ -425,29 +433,52 @@ def prepare_multimodal_edit(hparams,
         target = [target,]
     if isinstance(prompts, str):
         prompts = [prompts,]
-    if image is not None and len(image.shape) == 3:
-        image = image.unsqueeze(0)
-    text_input = [prompt_ + ' ' + target_ for prompt_, target_ in zip(prompts, target)]
-    
-    if hparams.model_name == 'minigpt4' or hparams.model_name == 'llava':
+    if "qwen-vl" in hparams.model_name.lower():
+        ret = {
+            'inputs': tok(f'{prompts[0]} {target[0]}', return_tensors='pt')["input_ids"] if image is None else tok(f'Picture 1: <img>{image}</img>\n{prompts[0]} {target[0]}', return_tensors='pt')["input_ids"],
+            'labels': tok(" " + target[0], add_special_tokens=False, return_tensors="pt",)["input_ids"],
+        }
+
+    elif 'owl' in hparams.model_name.lower():
+        from ..trainer.mPLUG_Owl2.mplug_owl2.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN
+        from ..trainer.mPLUG_Owl2.mplug_owl2.mm_utils import tokenizer_image_token
+        prompt = prompts[0] + " " + target[0]
+        if image is not None:
+            prompt = DEFAULT_IMAGE_TOKEN + prompt
+        else:
+            image = torch.zeros(1, 3, 448, 448)
+        ret = {
+            'input_ids': tokenizer_image_token(prompt, tok, IMAGE_TOKEN_INDEX, return_tensors='pt').unsqueeze(0),
+            'labels': tok(target, add_special_tokens=False, return_tensors="pt",)["input_ids"],
+            'image': image
+        }
+
+    else:
+        if torch.is_tensor(image) and image is not None and len(image.shape) == 3:
+            image = image.unsqueeze(0)
+        text_input = [prompt_ + ' ' + target_ for prompt_, target_ in zip(prompts, target)]
         prompts_len = [len(tok.encode(prompt, add_special_tokens=False)) for prompt in prompts]
         target = tok(target, add_special_tokens=False, return_tensors="pt",)["input_ids"]
-    else:
-        prompts_len = [len(tok.encode(prompt,)) for prompt in prompts]  
-        target = tok([' ' + target_ if target_[0] != ' ' else target_ for target_ in target], add_special_tokens=False, return_tensors="pt",)["input_ids"]
-        
-    ret = {
-        'text_input': text_input,
-        'image': image,
-        'labels': target,
-        'prompts_len': prompts_len        
-    } 
+            
+        ret = {
+            'text_input': text_input,
+            'image': image,
+            'labels': target,
+            'prompts_len': prompts_len        
+        } 
     return ret
 
 def compute_multimodal_edit_quality(model, batch):
     
     with torch.no_grad():
-        outputs = model(batch)
+        if "qwen" in model._get_name().lower():
+            outputs = model(batch['inputs'].to(model.device))
+        elif "owl" in model._get_name().lower():
+            input_ids, image = batch['input_ids'], batch['image']
+            outputs = model(input_ids.to(model.device), 
+                                         images=image.to(model.device, dtype=torch.float16))
+        else:     
+            outputs = model(batch)
         if isinstance(outputs, torch.Tensor):
             logits = outputs.detach().cpu()
         else:

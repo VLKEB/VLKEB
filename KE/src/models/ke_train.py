@@ -39,7 +39,7 @@ class MLLM_KE(LightningModule):
         parser.add_argument("--total_num_updates", type=int, default=30000)
         parser.add_argument("--warmup_updates", type=int, default=1000)
         parser.add_argument("--num_workers", type=int, default=0)
-        parser.add_argument("--model_name", type=str, choices=["blip2", "minigpt4", "llava"], default="blip2")
+        parser.add_argument("--model_name", type=str, choices=["blip2", "minigpt4", "llava", "qwen-vl", "owl-2"], default="blip2")
         parser.add_argument("--eps", type=float, default=0.1)
         parser.add_argument(
             "--model_checkpoint",
@@ -60,12 +60,12 @@ class MLLM_KE(LightningModule):
     def __init__(self, *args, **kwargs):
         super().__init__()
         self.save_hyperparameters()
-        self.model, self.tokenizer = get_model(self.hparams.model_name)
-
+        
         if self.hparams.model_name == 'blip2':
             self.model_hparams = MultimodalTrainingHparams.from_hparams(
                 '../hparams/TRAINING/KE/blip2.yaml'
             )
+            self.model, self.tokenizer = get_model(self.hparams.model_name)
             vocab_dim = self.model.opt_model.model.decoder.embed_tokens.weight.shape[0]
             embedding_dim = self.model.opt_model.model.decoder.embed_tokens.weight.shape[1]
             embedding_init = self.model.opt_model.model.decoder.embed_tokens.weight.data
@@ -74,6 +74,7 @@ class MLLM_KE(LightningModule):
             self.model_hparams = MultimodalTrainingHparams.from_hparams(
                 '../hparams/TRAINING/KE/minigpt4.yaml'
             )
+            self.model, self.tokenizer = get_model(self.hparams.model_name)
             vocab_dim = self.model.llama_model.model.embed_tokens.weight.shape[0]
             embedding_dim = self.model.llama_model.model.embed_tokens.weight.shape[1]
             embedding_init = self.model.llama_model.model.embed_tokens.weight.data
@@ -82,9 +83,32 @@ class MLLM_KE(LightningModule):
             self.model_hparams = MultimodalTrainingHparams.from_hparams(
                 '../hparams/TRAINING/KE/llava.yaml'
             )
+            self.model, self.tokenizer = get_model(self.hparams.model_name)
             vocab_dim = self.model.model.embed_tokens.weight.shape[0]
             embedding_dim = self.model.model.embed_tokens.weight.shape[1]
             embedding_init = self.model.model.embed_tokens.weight.data
+        
+        elif self.hparams.model_name == 'qwen-vl':
+            self.model_hparams = MultimodalTrainingHparams.from_hparams(
+                '../hparams/TRAINING/KE/qwenvl.yaml'
+            )
+            self.model, self.tokenizer = get_model(self.model_hparams.name)
+            vocab_dim = self.model.transformer.wte.weight.data.shape[0]
+            embedding_dim = self.model.transformer.wte.weight.data.shape[1]
+            embedding_init = self.model.transformer.wte.weight.data
+
+        elif self.hparams.model_name == 'owl-2':
+            self.model_hparams = MultimodalTrainingHparams.from_hparams(
+                '../hparams/TRAINING/KE/owl2.yaml'
+            )
+            self.model, self.tokenizer = get_model(self.model_hparams.name)
+            vocab_dim = self.model.base_model.embed_tokens.weight.data.shape[0]
+            embedding_dim = self.model.base_model.embed_tokens.weight.data.shape[1]
+            embedding_init = self.model.base_model.embed_tokens.weight.data
+
+        else:
+            raise ValueError(f"Model {self.hparams.model_name} not supported")
+
 
         self.include_params_set={
             n
@@ -152,16 +176,21 @@ class MLLM_KE(LightningModule):
 
     def get_logits_orig_params_dict(self, batch):
         with torch.enable_grad():
-            logit_for_grad = self.model.eval()(
-                batch['edit_inner']
-            ).logits
+            if self.hparams.model_name == "owl-2":
+                input_ids, image = batch["edit_inner"]['input_ids'], batch["edit_inner"]['image']
+                logit_for_grad= self.model.eval()(input_ids, 
+                                            images=image.to(dtype=torch.float16)).logits
+            else:
+                logit_for_grad = self.model.eval()(
+                    batch['edit_inner']['inputs'] if self.hparams.model_name == "qwen-vl" else batch['edit_inner'],
+                ).logits
 
             grads = torch.autograd.grad(
-                multiclass_log_probs(
-                    logit_for_grad,
-                    batch['edit_inner']['labels']
-                )["nll"],
-                [p for n, p in self.model.named_parameters() if n in self.include_params_set],
+                    multiclass_log_probs(
+                        logit_for_grad,
+                        batch['edit_inner']['labels']
+                    )["nll"],
+                    [p for n, p in self.model.named_parameters() if n in self.include_params_set],
             )
             grad_dict = {}
             for n, grad in zip([n for n, p in self.model.named_parameters() if n in self.include_params_set], grads):
@@ -180,12 +209,22 @@ class MLLM_KE(LightningModule):
         self.fmodel = make_functional(self.model).eval()
         
         with torch.cuda.amp.autocast():
-            logits = self.fmodel(
-                batch['edit_inner'],
-                params=[
-                    params_dict.get(n, 0) + p for n, p in self.model.named_parameters()
-                ],
-            ).logits
+            if self.hparams.model_name == "owl-2":
+                logits = self.fmodel(
+                    batch['edit_inner']['input_ids'],
+                    images = batch['edit_inner']['image'].to(dtype=torch.float16),
+                    params=[
+                        (params_dict.get(n, 0) + p) for n, p in self.model.named_parameters()
+                    ],
+                ).logits
+            else:
+                logits = self.fmodel(
+                    batch['edit_inner']['inputs'] if self.hparams.model_name == "qwen-vl" else batch['edit_inner'],
+                    params=[
+                        params_dict.get(n, 0) + p for n, p in self.model.named_parameters()
+                    ],
+                ).logits
+        self.fmodel = None
 
         return logits, params_dict
 
@@ -221,17 +260,24 @@ class MLLM_KE(LightningModule):
         self.fmodel = make_functional(self.model).eval()
         with torch.no_grad():
             with torch.cuda.amp.autocast():
-                logits = self.fmodel(
-                    batch['edit_inner'],
-                    params=[
-                        params_dict.get(n, 0) + p for n, p in self.model.named_parameters()
-                    ],
-                ).logits
+                if self.hparams.model_name == "owl-2":
+                    input_ids, image = batch["edit_inner"]['input_ids'], batch["edit_inner"]['image']
+                    logits = self.fmodel(
+                                input_ids, 
+                                images=image.to(dtype=torch.float16),
+                                params=[params_dict.get(n, 0) + p for n, p in self.model.named_parameters()],
+                            ).logits
+                else:
+                    logits = self.fmodel(
+                        batch['edit_inner']['inputs'] if self.hparams.model_name == "qwen-vl" else batch['edit_inner'],
+                        params=[params_dict.get(n, 0) + p for n, p in self.model.named_parameters()]
+                    ).logits
 
         results = multiclass_log_probs(
                 logits,
                 batch['edit_inner']['labels']
             )
+        self.fmodel = None
         
         pred = results["pred_ids"]
         trg = results["targ_ids"]

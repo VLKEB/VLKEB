@@ -66,7 +66,7 @@ def apply_ike_to_multimodal_model(
     sentence_model = SentenceTransformer(hparams.sentence_model_name,device=device)
 
     safe_model_name = hparams.sentence_model_name.rsplit('/', 1)[-1]
-    with open(f'{hparams.results_dir}/{hparams.alg_name}/embedding/'
+    with open(f'{hparams.results_dir}/embedding/'
               f'{hparams.task_name}_embeddings.pkl', "rb") as fIn:
         stored_data = pickle.load(fIn)
         stored_sentences = stored_data['sentences']

@@ -1,4 +1,5 @@
 import torch.nn as nn
+import torch
 from copy import deepcopy
 
 from ..losses import masked_log_probs
@@ -14,22 +15,7 @@ class EditableModel(nn.Module):
         self.model_constructor = model_constructor
 
         def _edit_loss_fn(config, pred, targ):
-            if 'minigpt4' in config.model_name.lower() or 'blip' in self.config.model_name.lower() or 'llava' in self.config.model_name.lower():
-                return masked_log_probs(config, pred, targ, shift=True)
-            elif 't5' in config.model_class.lower():
-                return masked_log_probs(config, pred, targ)
-            elif 'gpt' in config.model_class.lower():
-                return masked_log_probs(config, pred, targ, shift=True)
-            elif 'llama' in config.model_class.lower():
-                return masked_log_probs(config, pred, targ, shift=True)
-            elif 'internlm' in config.model_name.lower():
-                return masked_log_probs(config, pred, targ, shift=True)
-            elif 'chatglm' in config.model_name.lower():
-                return masked_log_probs(config, pred, targ, shift=True)
-            elif 'qwen' in config.model_name.lower():
-                return masked_log_probs(config, pred, targ, shift=True)
-            else:
-                return masked_log_probs(config, pred, targ)
+            return masked_log_probs(config, pred, targ, shift=True)
 
         self.edit_loss_fn = _edit_loss_fn
         self.loc_loss_fn = masked_log_probs
@@ -38,7 +24,14 @@ class EditableModel(nn.Module):
         raise NotImplementedError
 
     def forward(self, *inputs, **kwargs):
-        return _logits(self.model(*inputs, **kwargs))
+        if self.config.model_name == "qwen-vl":
+            return _logits(self.model(inputs[0]['inputs']))
+        elif self.config.model_name == "owl-2":
+            input_ids, image = inputs[0]['input_ids'], inputs[0]['image']
+            return _logits(self.model(input_ids.to(self.config.device), 
+                                         images=image.to(self.config.device, dtype=torch.float16)))
+        else:
+            return _logits(self.model(*inputs, **kwargs))
 
     def outer_parameters(self):
         return self.parameters()

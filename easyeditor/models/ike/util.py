@@ -43,7 +43,7 @@ def encode_ike_facts_multimodal(sentence_model: SentenceTransformer, ds: Dataset
 
 
     embeddings = sentence_model.encode(sentences)
-    base_path = f'{hparams.results_dir}/{hparams.alg_name}/embedding'
+    base_path = f'{hparams.results_dir}/embedding'
     os.makedirs(base_path, exist_ok=True)
     safe_model_name = hparams.sentence_model_name.rsplit('/', 1)[-1]
     with open(f'{base_path}/{hparams.task_name}_embeddings.pkl', "wb") as fOut:

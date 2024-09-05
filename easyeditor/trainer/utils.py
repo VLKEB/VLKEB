@@ -115,7 +115,10 @@ def add_sep(tokenizer, model):
 def add_padding(tokenizer, model):
     tokenizer.add_special_tokens({'pad_token': '[PAD]'})
     model.resize_token_embeddings(len(tokenizer))
-    model.transformer.wte.weight.data[-1] = model.transformer.wte.weight.data.mean(0)
+    if hasattr(model, 'transformer') and hasattr(model.transformer, 'wte'):
+        model.transformer.wte.weight.data[-1] = model.transformer.wte.weight.data.mean(0)
+    else:
+        model.model.base_model.embed_tokens.weight.data[-1] = model.model.base_model.embed_tokens.weight.data.mean(0)
 
 
 def set_dropout(model, p):

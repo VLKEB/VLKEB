@@ -4,8 +4,8 @@ import re
 import torch
 import torch.nn as nn
 import transformers
-from transformers import GPT2Tokenizer, GPT2TokenizerFast
-from transformers import LlavaPreTrainedModel
+from transformers import GPT2Tokenizer, GPT2TokenizerFast, AutoModel, AutoModelForCausalLM, AutoTokenizer
+# from transformers import LlavaPreTrainedModel
 
 from .utils import scr
 
@@ -110,6 +110,21 @@ def get_model(config):
         
         # for name, param in model.named_parameters():
         #     print(f"{name}: {param.shape}")
+    elif config.model_name == "qwen-vl":
+        LOG.info(
+            f"Loading model with name {config.model_name}"
+        )
+        model = AutoModelForCausalLM.from_pretrained(config.name, 
+                                                     device_map=f"cuda:{config.device}", 
+                                                     trust_remote_code=True)
+    elif config.model_name == "owl-2":
+        LOG.info(
+            f"Loading model with name {config.model_name}"
+        )
+        from .mPLUG_Owl2.mplug_owl2.model.builder import load_pretrained_model
+        tokenizer , model, _, _ = load_pretrained_model(config.name, None, 'mplug_owl2', load_8bit=False, load_4bit=False, device=f"cuda:{config.device}")
+        for param in model.parameters():
+            param.requires_grad = True
     else:
         ModelClass = getattr(transformers, config.model_class)
         LOG.info(

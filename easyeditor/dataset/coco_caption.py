@@ -16,8 +16,12 @@ import random
 import typing
 import torch
 import transformers
+from transformers import AutoTokenizer
 from tqdm import tqdm
 from copy import deepcopy
+
+from ..trainer.mPLUG_Owl2.mplug_owl2.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN
+from ..trainer.mPLUG_Owl2.mplug_owl2.mm_utils import tokenizer_image_token, process_images
 
 class CaptionDataset(BaseDataset):
     def __init__(self, data_dir: str, size:  typing.Optional[int] = None, config=None, no_image=False, hop=None, *args, **kwargs):
@@ -30,6 +34,11 @@ class CaptionDataset(BaseDataset):
             vis_processor = BlipImageEvalProcessor(image_size=364, mean=None, std=None)
         elif config.model_class == "LLaVA":
             vis_processor = transformers.CLIPImageProcessor.from_pretrained("openai/clip-vit-large-patch14-336")
+        elif config.model_class ==  "qwen-vl":
+            vis_processor = BlipImageEvalProcessor(image_size=448, mean=None, std=None)
+        elif "owl-2" in config.model_name.lower():
+            from transformers.models.clip.image_processing_clip import CLIPImageProcessor
+            vis_processor = CLIPImageProcessor.from_pretrained(config.name, trust_remote_code=True)
         else:
             raise NotImplementedError("unknown model class")
 
@@ -39,9 +48,14 @@ class CaptionDataset(BaseDataset):
                 if config.tokenizer_name is not None
                 else config.name
             )
-            tokenizer = getattr(transformers, config.tokenizer_class).from_pretrained(
-                tok_name, trust_remote_code=True
-            )            
+            if config.tokenizer_class == "QWenTokenizer":
+                tokenizer = AutoTokenizer.from_pretrained(config.name, trust_remote_code=True, pad_token='<|endoftext|>')
+            elif config.model_name == "owl-2":
+                tokenizer = AutoTokenizer.from_pretrained(config.name, use_fast=False, trust_remote_code=True)
+            else:
+                tokenizer = getattr(transformers, config.tokenizer_class).from_pretrained(
+                    tok_name, trust_remote_code=True
+                )            
             if tokenizer.pad_token == None or tokenizer.pad_token == '':
                 tokenizer.pad_token = tokenizer.eos_token  
                 
@@ -143,6 +157,24 @@ class CaptionDataset(BaseDataset):
             image = self.vis_processor(image, return_tensors='pt')['pixel_values'].to(dtype=torch.float16)
             rephrase_image = self.vis_processor(rephrase_image, return_tensors='pt')['pixel_values'].to(dtype=torch.float16)
             locality_image = self.vis_processor(locality_image, return_tensors='pt')['pixel_values'].to(dtype=torch.float16)
+        elif self.config.model_class == "qwen-vl":
+            image = os.path.join(self.vis_root, image_path)
+            rephrase_image = os.path.join(self.rephrase_root, rephrase_image_path)
+            locality_image = os.path.join(self.vis_root, locality_image_path)
+        elif self.config.model_name == "owl-2":
+            
+                    
+            _image = Image.open(image_path).convert('RGB')
+            max_edge = max(_image.size) 
+            image = process_images([_image.resize((max_edge, max_edge))], self.vis_processor)
+
+            _image = Image.open(rephrase_image_path).convert('RGB')
+            max_edge = max(_image.size) 
+            rephrase_image = process_images([_image.resize((max_edge, max_edge))], self.vis_processor)
+
+            _image = Image.open(locality_image_path).convert('RGB')
+            max_edge = max(_image.size) 
+            locality_image = process_images([_image.resize((max_edge, max_edge))], self.vis_processor)
         else:
             raise NotImplementedError
 
@@ -160,52 +192,59 @@ class CaptionDataset(BaseDataset):
         trg = [b['target'] for b in batch]
         cond = [b['cond'] for b in batch]
         rephrase = [b['rephrase_prompt'] for b in batch]
-        image = [b['image'] for b in batch]
-        image_rephrase = [b['image_rephrase'] for b in batch]
+        image = [b['image'] for b in batch] if "owl-2" not in self.config.model_name else [b['image'] for b in batch][0]
+        image_rephrase = [b['image_rephrase'] for b in batch] if "owl-2" not in self.config.model_name else [b['image_rephrase'] for b in batch][0]
         loc_q = [b["locality_prompt"] for b in batch]
         loc_a = [b["locality_ground_truth"] for b in batch]
-        m_loc_image = [b['multimodal_locality_image'] for b in batch]
+        m_loc_image = [b['multimodal_locality_image'] for b in batch] if "owl-2" not in self.config.model_name else [b['multimodal_locality_image'] for b in batch][0]
         m_loc_q = [b['multimodal_locality_prompt'] for b in batch]
         m_loc_a = [b['multimodal_locality_ground_truth'] for b in batch]
+
+        tokenizer = AutoTokenizer.from_pretrained(self.config.name, use_fast=False) if self.config.model_name == "owl-2" else None
         
         # edit_inner
         edit_inner = {}
-        edit_inner['image'] = torch.stack(image, dim=0)
+        edit_inner['image'] = torch.stack(image, dim=0) if ("qwen-vl" not in self.config.model_name and "owl-2" not in self.config.model_name) else image
         edit_inner['text_input'] = [" ".join([s, t]) for s, t in zip(src, trg)]
-        edit_inner['labels'] = trg
+        edit_inner['inputs'] = self.tok(f'Picture 1: <img>{image[0]}</img>\n{src[0]} {trg[0]}', return_tensors='pt')["input_ids"]
+        edit_inner['input_ids'] = tokenizer_image_token(DEFAULT_IMAGE_TOKEN + src[0] + " " + trg[0], tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt').unsqueeze(0) if self.config.model_name == "owl-2" else None
         edit_inner['prompts_len'] = [len(self.tok.encode(s, add_special_tokens=False)) for s in src]
         edit_inner['labels'] = self.tok(trg, add_special_tokens=False, return_tensors="pt",)["input_ids"]
         
         # edit_outer
         edit_outer = {}
-        edit_outer['image'] = torch.stack(image, dim=0)
+        edit_outer['image'] = torch.stack(image, dim=0) if ("qwen-vl" not in self.config.model_name and "owl-2" not in self.config.model_name) else image
         edit_outer['text_input'] = [" ".join([r, t]) for r, t in zip(rephrase, trg)]
-        edit_outer['labels'] = trg
+        edit_outer['inputs'] = self.tok(f'Picture 1: <img>{image[0]}</img>\n{rephrase[0]} {trg[0]}', return_tensors='pt')["input_ids"]
+        edit_outer['input_ids'] = tokenizer_image_token(DEFAULT_IMAGE_TOKEN + rephrase[0] + " " + trg[0], tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt').unsqueeze(0) if self.config.model_name == "owl-2" else None
         edit_outer['prompts_len'] = [len(self.tok.encode(r, add_special_tokens=False)) for r in rephrase]
         edit_outer['labels'] = self.tok(trg, add_special_tokens=False, return_tensors="pt",)["input_ids"]
             
         # edit_outer_image
         edit_outer_image = {}
-        edit_outer_image['image'] = torch.stack(image_rephrase, dim=0)
+        edit_outer_image['image'] = torch.stack(image_rephrase, dim=0) if ("qwen-vl" not in self.config.model_name and "owl-2" not in self.config.model_name) else image_rephrase
         edit_outer_image['text_input'] = [" ".join([s, t]) for s, t in zip(src, trg)]
-        edit_outer_image['labels'] = trg
+        edit_outer_image['inputs'] = self.tok(f'Picture 1: <img>{image_rephrase[0]}</img>\n{src[0]} {trg[0]}', return_tensors='pt')["input_ids"]
+        edit_outer_image['input_ids'] = tokenizer_image_token(DEFAULT_IMAGE_TOKEN + src[0] + " " + trg[0], tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt').unsqueeze(0) if self.config.model_name == "owl-2" else None
         edit_outer_image['prompts_len'] = [len(self.tok.encode(s, add_special_tokens=False)) for s in src]
         edit_outer_image['labels'] = self.tok(trg, add_special_tokens=False, return_tensors="pt",)["input_ids"]
 
         
         # loc
         loc = {}
-        loc['image'] = None
+        loc['image'] = torch.zeros(1, 3, 448, 448) if "owl-2" in self.config.model_name else None
         loc['text_input'] = [" ".join([q, a]) for q, a in zip(loc_q, loc_a)]
-        loc['labels'] = loc_a
+        loc['inputs'] = self.tok(f"{loc_q[0]} {loc_a[0]}", return_tensors='pt')["input_ids"]
+        loc['input_ids'] = tokenizer_image_token(loc_q[0] + " " + loc_a[0], tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt').unsqueeze(0) if self.config.model_name == "owl-2" else None
         loc['prompts_len'] = [len(self.tok.encode(q, add_special_tokens=False)) for q in loc_q]
         loc['labels'] = self.tok(loc_a, add_special_tokens=False, return_tensors="pt",)["input_ids"]
         
         # m_loc
         loc_image = {}
-        loc_image['image'] = torch.stack(m_loc_image, dim=0)
+        loc_image['image'] = torch.stack(m_loc_image, dim=0) if ("qwen-vl" not in self.config.model_name and "owl-2" not in self.config.model_name) else m_loc_image
         loc_image['text_input'] = [" ".join([q, a]) for q, a in zip(m_loc_q, m_loc_a)]
-        loc_image['labels'] = m_loc_a
+        loc_image['inputs'] = self.tok(f'Picture 1: <img>{m_loc_image[0]}</img>\n{m_loc_q[0]} {m_loc_a[0]}', return_tensors='pt')["input_ids"]
+        loc_image['input_ids'] = tokenizer_image_token(DEFAULT_IMAGE_TOKEN + m_loc_q[0] + " " + m_loc_a[0], tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt').unsqueeze(0) if self.config.model_name == "owl-2" else None
         loc_image['prompts_len'] = [len(self.tok.encode(q, add_special_tokens=False)) for q in m_loc_q]
         loc_image['labels'] = self.tok(m_loc_a, add_special_tokens=False, return_tensors="pt",)["input_ids"]
 
@@ -223,9 +262,10 @@ class CaptionDataset(BaseDataset):
             edit_ports = []
             for port_q, port_a in zip(batch[0]['portability_prompt'], batch[0]['portability_ground_truth']):
                 port = {}
-                port['image'] = torch.stack(image, dim=0)
+                port['image'] = torch.stack(image, dim=0) if ("qwen-vl" not in self.config.model_name and "owl-2" not in self.config.model_name) else image
                 port['text_input'] = [' '.join([port_q, port_a])]
-                port['labels'] = [port_a]
+                port['inputs'] = self.tok(f'Picture 1: <img>{image[0]}</img>\n{port_q[0]} {port_a[0]}', return_tensors='pt')["input_ids"]
+                port['input_ids'] = tokenizer_image_token(DEFAULT_IMAGE_TOKEN + port_q[0] + " " + port_a[0], tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt').unsqueeze(0) if self.config.model_name == "owl-2" else None
                 port['prompts_len'] = [len(self.tok.encode(port_q, add_special_tokens=False))]
                 port['labels'] = self.tok([port_a], add_special_tokens=False, return_tensors="pt",)["input_ids"]
                 edit_ports.append(port)

@@ -95,6 +95,17 @@ class MultimodalEditor:
             elif hparams.model_name == "llava":
                 from ..trainer.llava.model.builder import load_pretrained_model
                 model = load_pretrained_model(model_path=hparams.name, device=hparams.device)
+            elif "qwen-vl" in hparams.model_name.lower():
+                tokenizer = AutoTokenizer.from_pretrained(hparams.name, trust_remote_code=True, pad_token='<|endoftext|>')
+                model = AutoModelForCausalLM.from_pretrained(
+                    hparams.name, trust_remote_code=True
+                )
+
+            elif "owl-2" in hparams.model_name.lower():
+                from ..trainer.mPLUG_Owl2.mplug_owl2.model.builder import load_pretrained_model
+                tokenizer , model, _, _ = load_pretrained_model(hparams.name, None, 'mplug_owl2', load_8bit=False, load_4bit=False, device=f"cuda:{hparams.device}")
+                for param in model.parameters():
+                    param.requires_grad = True
                 
             self.model = model
             # Get tokenizer and vis_processor
@@ -104,6 +115,13 @@ class MultimodalEditor:
             elif hparams.model_name == "llava":
                 vis_processor = transformers.CLIPImageProcessor.from_pretrained("openai/clip-vit-large-patch14-336")
                 self.vis_tok = lambda image: vis_processor(image, return_tensors='pt')['pixel_values'].to(dtype=torch.float16)
+            elif hparams.model_class ==  "qwen-vl":
+                vis_processor = BlipImageEvalProcessor(image_size=448, mean=None, std=None)
+                self.vis_tok = vis_processor
+            elif hparams.model_name.lower() == "owl-2":
+                from transformers.models.clip.image_processing_clip import CLIPImageProcessor
+                vis_processor = CLIPImageProcessor.from_pretrained(hparams.name, trust_remote_code=True)
+                self.vis_tok = vis_processor
             else:
                 raise NotImplementedError(f"Model {hparams.model_name} not supported")
 
@@ -443,8 +461,8 @@ class MultimodalEditor:
         # num_edits = self.hparams.batch_size
         
         all_metrics = []
-        save_txt =  f'results/IKE/{cur_time}_{self.model_name}_port_hop{ds.hop}.txt'
-        save_json = f'results/IKE/{cur_time}_{self.model_name}_port_hop{ds.hop}.json'
+        save_txt =  os.path.join(self.hparams.results_dir, 'IKE/{cur_time}_{self.model_name}_port_hop{ds.hop}.txt')
+        save_json = os.path.join(self.hparams.results_dir, 'IKE/{cur_time}_{self.model_name}_port_hop{ds.hop}.json')
         port_result = []
 
         for i, request in tqdm(enumerate(ds), desc='Editing dataset', total=len(ds), ncols=120):
@@ -486,6 +504,7 @@ class MultimodalEditor:
                 }
                 port_result.append(port)
                 # write port kv to txt
+                os.makedirs(os.path.dirname(save_txt), exist_ok=True)
                 with open(save_txt, 'a') as f:
                     f.write(f"{port['edit_input']}\n{port['port_input']}\n{port['port_acc']}\npred: {port['port_pred_ids']}\ntarget: {port['port_targ_ids']}\n\n")
 
@@ -507,7 +526,7 @@ class MultimodalEditor:
                     copy=False,
                     return_orig_weights=True,
                     keep_original_weight=keep_original_weight,
-                    train_ds=kwargs['train_ds'] if self.alg_name == 'IKE' else None
+                    train_ds=None
                 )
                 exec_time = time() - start
                 LOG.info(f"Execution {i} editing took {exec_time}")
@@ -556,7 +575,6 @@ class MultimodalEditor:
 
                 all_metrics.append(metrics)
 
-        # save port_result to save_json
         with open(save_json, 'w') as f:
             json.dump(port_result, f, indent=2)
 

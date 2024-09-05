@@ -1,6 +1,6 @@
 import logging
 import torch.nn as nn
-from transformers import GPT2Tokenizer, LlamaTokenizer
+from transformers import GPT2Tokenizer, LlamaTokenizer, AutoTokenizer, AutoModelForCausalLM
 
 
 LOG = logging.getLogger(__name__)
@@ -47,6 +47,18 @@ def get_model(model_name, device=None):
         from .llava.model.builder import load_pretrained_model
         model = load_pretrained_model(model_path=f'{model_path}/llava-v1.5-7b')
         tokenizer = LlamaTokenizer.from_pretrained(f'{model_path}/llava-v1.5-7b')
+
+    elif "qwen-vl" in model_name.lower():
+        tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True, pad_token='<|endoftext|>')
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name, trust_remote_code=True
+        )
+
+    elif "owl2" in model_name.lower():
+        from .mPLUG_Owl2.mplug_owl2.model.builder import load_pretrained_model
+        tokenizer , model, _, _ = load_pretrained_model(model_name, None, 'mplug_owl2', load_8bit=False, load_4bit=False)
+        for param in model.parameters():
+            param.requires_grad = True
 
     else:
         raise ValueError(f"Model {model_name} not supported")
