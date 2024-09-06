@@ -157,7 +157,7 @@ hugging_cache/
 ├── distilbert-base-cased/
 ├── Llama-2-7b-hf/
 ├── llava-v1.5-7b/
-├── mPLUG-Owl2/
+├── mplug-owl2-llama2-7b/
 ├── opt-2.7b/
 ├── opt-125m/
 ├── Qwen-7B/
@@ -217,8 +217,6 @@ Links are in the following:
 
 Currently, we put code of different experiments in different branches. 
 
-**BLIP2-OPT, MiniGPT-4 and LLaVA**
-
 For the single editing experiment, you can refer to the [main](https://github.com/VLKEB/VLKEB/tree/main) branch. For the multihop and sequential editing experiment, you can refer to the [multihop_and_sequential](https://github.com/VLKEB/VLKEB/tree/multihop_and_sequential) branch. For the edit one-hop knowledge, you can refer to the [edit_onehop](https://github.com/VLKEB/VLKEB/tree/edit_onehop) branch.
 
 For experiments of KE method, you can refer to the [main](https://github.com/VLKEB/VLKEB/tree/main) branch and get into 'KE' subfolder.
@@ -231,7 +229,7 @@ To run the code, check the python file under root folder and run as the followin
 python multimodal_edit.py [FUNC_NAME] [HOP_NUM] # see .py file for function names 
 
 # at main branch, KE, can use bash scripts
-./train_ke.sh [GPU_ID] [MODEL_NAME] # MODEL_NAME=[blip2, minigpt4, llava]
+./train_ke.sh [GPU_ID] [MODEL_NAME] # MODEL_NAME=[blip2, minigpt4, llava, qwen-vl, owl-2]
 ./test_ke.sh [GPU_ID] [MODEL_NAME] [CHECKPOINT_PATH] # test without portability
 ./test_multihop.sh [GPU_ID] [MODEL_NAME] [HOP_NUM] # HOP_NUM=[1, 2, 3, 4]
 
