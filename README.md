@@ -122,14 +122,20 @@ VLKEB includes a total of 8174 edits, divided into 5000 for training and 3174 fo
 
 
 ### Environments
-**Conda environment:** we export the conda environment file for running the code.
+**Conda environment:** we export the conda environment file for running the code. Please ensure you carefully review the separate environments provided for different algorithms and models.
 We conduct experiments based on the great works in [Acknowledgments](#-acknowledgments).
 
 ```bash
-# To run code of EasyEdit, use the following environment
+# To run the code for FT, IKE, MEND and SERAC on models blip2, minigpt4 and llava, use the following environment
 conda env create -f envs/vlkeb_easyedit.yml
 
-# To run code of KE, use the following environment
+# To run the code for FT, IKE, MEND and SERAC on model qwen-vl, use the following environment
+conda env create -f envs/vlkeb_qwenvl.yml
+
+# To run the code for FT, IKE, MEND and SERAC on model owl-2, use the following environment
+conda env create -f envs/vlkeb_owl2.yml
+
+# To run the code for KE, use the following environment
 conda env create -f envs/vlkeb_ke.yml
 ```
 
