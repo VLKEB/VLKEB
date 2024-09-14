@@ -321,7 +321,7 @@ def revert_llama_modality_adaptive():
 
 print("Original MPLUGOwl2Modeling saved successfully")
 
-replace_llama_modality_adaptive()
+# replace_llama_modality_adaptive()
 
 if __name__ == "__main__":
     config = MPLUGOwl2Config.from_pretrained('/cpfs01/shared/public/test/vicuna-7b-v1.5/')

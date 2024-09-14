@@ -5,7 +5,7 @@ name: hugging_cache/Qwen-VL
 model_name: qwen-vl
 model_class: qwen-vl
 tokenizer_class: QWenTokenizer
-tokenizer_name: hugging_cache//Qwen-VL
+tokenizer_name: hugging_cache/Qwen-VL
 inner_params:
 - transformer.h.29.mlp.w1.weight
 - transformer.h.29.mlp.w2.weight

@@ -264,8 +264,8 @@ class CaptionDataset(BaseDataset):
                 port = {}
                 port['image'] = torch.stack(image, dim=0) if ("qwen-vl" not in self.config.model_name and "owl-2" not in self.config.model_name) else image
                 port['text_input'] = [' '.join([port_q, port_a])]
-                port['inputs'] = self.tok(f'Picture 1: <img>{image[0]}</img>\n{port_q[0]} {port_a[0]}', return_tensors='pt')["input_ids"]
-                port['input_ids'] = tokenizer_image_token(DEFAULT_IMAGE_TOKEN + port_q[0] + " " + port_a[0], tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt').unsqueeze(0) if self.config.model_name == "owl-2" else None
+                port['inputs'] = self.tok(f'Picture 1: <img>{image[0]}</img>\n{port_q} {port_a}', return_tensors='pt')["input_ids"]
+                port['input_ids'] = tokenizer_image_token(DEFAULT_IMAGE_TOKEN + port_q + " " + port_a, tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt').unsqueeze(0) if self.config.model_name == "owl-2" else None
                 port['prompts_len'] = [len(self.tok.encode(port_q, add_special_tokens=False))]
                 port['labels'] = self.tok([port_a], add_special_tokens=False, return_tensors="pt",)["input_ids"]
                 edit_ports.append(port)
