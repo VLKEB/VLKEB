@@ -10,3 +10,5 @@ openai
 hugging_cache
 *.ttf
 tmp*
+
+KE/models
