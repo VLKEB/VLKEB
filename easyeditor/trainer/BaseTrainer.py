@@ -154,6 +154,7 @@ class BaseTrainer:
 
         self.epoches = round(float(self.config.max_iters) / (len(self.train_set) / self.config.batch_size))
         self.global_iter = 0
+        best_step = 0
         for epoch in range(self.epoches):
             for batch in tqdm(self.train_loader, ncols=120, desc=f'Epoch {epoch+1}/{self.epoches}'):
                 self.global_iter += 1
@@ -171,6 +172,7 @@ class BaseTrainer:
                     self.echo(self.global_iter, val_info)
                     if stopper.update(self.global_iter, val_info):
                         self.save_state(val_info)  # New best
+                        best_step = self.global_iter
                     if stopper.should_stop():
                         LOG.info(
                             f"No decrease in {self.config.early_stop_key} for {self.config.early_stop_patience} steps"
@@ -185,7 +187,7 @@ class BaseTrainer:
 
         if not self.config.eval_only:
             if (not self.config.debug) or self.config.save:
-                archive = torch.load(self.save_path, map_location="cpu")
+                archive = torch.load(self.save_path+f'-step_{best_step}.pt', map_location="cpu")
                 LOG.info(
                     f"Loading best model from step {archive['step']}, elapsed time {archive['elapsed_time']}"
                 )
