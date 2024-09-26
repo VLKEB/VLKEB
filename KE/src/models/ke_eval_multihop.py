@@ -26,7 +26,7 @@ class MLLM_KE(LightningModule):
         parser.add_argument("--max_length", type=int, default=32)
         parser.add_argument("--num_workers", type=int, default=0)
         parser.add_argument("--hop", type=str, choices=['1', '2', '3', '4'])
-        parser.add_argument("--model_name", type=str, choices=["blip2", "minigpt4", "llava"], default="blip2")
+        parser.add_argument("--model_name", type=str, choices=["blip2", "minigpt4", "llava", "qwen-vl", "owl-2"], default="blip2")
         parser.add_argument("--model_checkpoint", type=str, required=True)
         return parser
 
@@ -59,6 +59,27 @@ class MLLM_KE(LightningModule):
             embedding_dim = self.model.model.embed_tokens.weight.shape[1]
             embedding_init = self.model.model.embed_tokens.weight.data
 
+        elif self.hparams.model_name == 'qwen-vl':
+            self.model_hparams = MultimodalTrainingHparams.from_hparams(
+                '../hparams/TRAINING/KE/qwenvl.yaml'
+            )
+            self.model, self.tokenizer = get_model(self.model_hparams.name)
+            vocab_dim = self.model.transformer.wte.weight.data.shape[0]
+            embedding_dim = self.model.transformer.wte.weight.data.shape[1]
+            embedding_init = self.model.transformer.wte.weight.data
+
+        elif self.hparams.model_name == 'owl-2':
+            self.model_hparams = MultimodalTrainingHparams.from_hparams(
+                '../hparams/TRAINING/KE/owl2.yaml'
+            )
+            self.model, self.tokenizer = get_model(self.model_hparams.name)
+            vocab_dim = self.model.base_model.embed_tokens.weight.data.shape[0]
+            embedding_dim = self.model.base_model.embed_tokens.weight.data.shape[1]
+            embedding_init = self.model.base_model.embed_tokens.weight.data
+
+        else:
+            raise ValueError(f"Model {self.hparams.model_name} not supported")
+        
         self.include_params_set={
             n
             for n, _ in self.model.named_parameters()
@@ -117,9 +138,14 @@ class MLLM_KE(LightningModule):
 
     def get_logits_orig_params_dict(self, batch):
         with torch.enable_grad():
-            logit_for_grad = self.model.eval()(
-                batch['edit_inner']
-            ).logits
+            if self.hparams.model_name == "owl-2":
+                input_ids, image = batch["edit_inner"]['input_ids'], batch["edit_inner"]['image']
+                logit_for_grad= self.model.eval()(input_ids, 
+                                            images=image.to(dtype=torch.float16)).logits
+            else:
+                logit_for_grad = self.model.eval()(
+                    batch['edit_inner']['inputs'] if self.hparams.model_name == "qwen-vl" else batch['edit_inner'],
+                ).logits
 
             grads = torch.autograd.grad(
                 multiclass_log_probs(
@@ -147,42 +173,133 @@ class MLLM_KE(LightningModule):
         self.fmodel = make_functional(self.model).eval()
         with torch.no_grad():
             with torch.cuda.amp.autocast():
-                params=[params_dict.get(n, 0) + p for n, p in self.model.named_parameters()]
-                
-                logits = self.fmodel(batch['edit_inner'], params=params).logits
-                results = multiclass_log_probs(logits, batch['edit_inner']['labels'])
-                self.valid_acc(results["pred_ids"], results["targ_ids"])
-                self.log("acc", self.valid_acc, on_step=False, on_epoch=True, prog_bar=True)
+                params = [params_dict.get(n, 0) + p for n, p in self.model.named_parameters()]
+                if self.hparams.model_name == "owl-2":
+                    input_ids, image = batch["edit_inner"]['input_ids'], batch["edit_inner"]['image']
+                    logits = self.fmodel(
+                                input_ids, 
+                                images=image.to(dtype=torch.float16),
+                                params=params,
+                            ).logits
+                    results = multiclass_log_probs(logits, batch['edit_inner']['labels'])
+                    self.valid_acc(results["pred_ids"], results["targ_ids"])
+                    self.log("acc", self.valid_acc, on_step=False, on_epoch=True, prog_bar=True)
 
-                logits = self.fmodel(batch['edit_outer'], params=params).logits
-                results = multiclass_log_probs(logits, batch['edit_outer']['labels'])
-                self.valid_t_gen(results["pred_ids"], results["targ_ids"])
-                self.log("t_gen", self.valid_t_gen, on_step=False, on_epoch=True, prog_bar=True)
+                    input_ids, image = batch["edit_outer"]['input_ids'], batch["edit_outer"]['image']
+                    logits = self.fmodel(
+                                input_ids, 
+                                images=image.to(dtype=torch.float16),
+                                params=params,
+                            ).logits
+                    results = multiclass_log_probs(logits, batch['edit_outer']['labels'])
+                    self.valid_t_gen(results["pred_ids"], results["targ_ids"])
+                    self.log("t_gen", self.valid_acc, on_step=False, on_epoch=True, prog_bar=True)
 
-                logits = self.fmodel(batch['edit_outer_image'], params=params).logits
-                results = multiclass_log_probs(logits, batch['edit_outer_image']['labels'])
-                self.valid_m_gen(results["pred_ids"], results["targ_ids"])
-                self.log("m_gen", self.valid_m_gen, on_step=False, on_epoch=True, prog_bar=True)
+                    input_ids, image = batch["edit_outer_image"]['input_ids'], batch["edit_outer_image"]['image']
+                    logits = self.fmodel(
+                                input_ids, 
+                                images=image.to(dtype=torch.float16),
+                                params=params,
+                            ).logits
+                    results = multiclass_log_probs(logits, batch['edit_outer_image']['labels'])
+                    self.valid_m_gen(results["pred_ids"], results["targ_ids"])
+                    self.log("m_gen", self.valid_acc, on_step=False, on_epoch=True, prog_bar=True)
 
-                base_logits = self.model.eval()(batch["loc"]).logits
-                base_logits_softmax_top_k = torch.topk(torch.nn.functional.softmax(base_logits, dim=-1), k=1, dim=-1).indices
-                post_base_logits = self.fmodel(batch['loc'], params=params).logits
-                post_base_logits_softmax_top_k = torch.topk(torch.nn.functional.softmax(post_base_logits, dim=-1), k=1, dim=-1).indices
-                self.valid_t_loc(base_logits_softmax_top_k.view(-1), post_base_logits_softmax_top_k.view(-1))
-                self.log("t_loc", self.valid_t_loc, on_step=False, on_epoch=True, prog_bar=True)
+                    input_ids, image = batch["loc"]['input_ids'], batch["loc"]['image']
+                    base_logits = self.model.eval()(
+                                input_ids, 
+                                images=image.to(dtype=torch.float16),
+                            ).logits
+                    base_logits_softmax_top_k = torch.topk(torch.nn.functional.softmax(base_logits, dim=-1), k=1, dim=-1).indices
+                    post_base_logits = self.fmodel(
+                                input_ids, 
+                                images=image.to(dtype=torch.float16),
+                                params=params,
+                            ).logits
+                    post_base_logits_softmax_top_k = torch.topk(torch.nn.functional.softmax(post_base_logits, dim=-1), k=1, dim=-1).indices
+                    self.valid_t_loc(base_logits_softmax_top_k.view(-1), post_base_logits_softmax_top_k.view(-1))
+                    self.log("t_loc", self.valid_t_loc, on_step=False, on_epoch=True, prog_bar=True)
+                            
+                    input_ids, image = batch["loc_image"]['input_ids'], batch["loc_image"]['image']
+                    base_image_logits = self.model.eval()(
+                                input_ids, 
+                                images=image.to(dtype=torch.float16),
+                            ).logits
+                    base_image_logits_softmax_top_k = torch.topk(torch.nn.functional.softmax(base_image_logits, dim=-1), k=10, dim=-1).indices
+                    post_image_base_logits = self.fmodel(
+                                input_ids, 
+                                images=image.to(dtype=torch.float16),
+                                params=params,
+                            ).logits
+                    post_image_base_logits_softmax_top_k = torch.topk(torch.nn.functional.softmax(post_image_base_logits, dim=-1), k=10, dim=-1).indices
+                    self.valid_m_loc(base_image_logits_softmax_top_k.view(-1), post_image_base_logits_softmax_top_k.view(-1))
+                    self.log("m_loc", self.valid_m_loc, on_step=False, on_epoch=True, prog_bar=True)
+
+                    port = batch['port'][0]
+                    input_ids, image = port['input_ids'], port['image']
+                    logits = self.fmodel(
+                                input_ids, 
+                                images=image.to(dtype=torch.float16),
+                                params=params,
+                            ).logits
+                    results = multiclass_log_probs(logits, port['labels'])
+                    self.valid_port(results["pred_ids"], results["targ_ids"])
+                    self.log("port", self.valid_port, on_step=False, on_epoch=True, prog_bar=True)
+                    
+                else:
+                    logits = self.fmodel(
+                        batch['edit_inner']['inputs'] if self.hparams.model_name == "qwen-vl" else batch['edit_inner'],
+                        params=params,
+                    ).logits
+                    results = multiclass_log_probs(logits, batch['edit_inner']['labels'])
+                    self.valid_acc(results["pred_ids"], results["targ_ids"])
+                    self.log("acc", self.valid_acc, on_step=False, on_epoch=True, prog_bar=True)
+                    logits = None
+                    results = None
+
+                    logits = self.fmodel(
+                        batch['edit_outer']['inputs'] if self.hparams.model_name == "qwen-vl" else batch['edit_outer'],
+                        params=params,
+                    ).logits
+                    results = multiclass_log_probs(logits, batch['edit_outer']['labels'])
+                    self.valid_t_gen(results["pred_ids"], results["targ_ids"])
+                    self.log("t_gen", self.valid_t_gen, on_step=False, on_epoch=True, prog_bar=True)
+                    logits = None
+                    results = None
+
+                    logits = self.fmodel(
+                        batch['edit_outer_image']['inputs'] if self.hparams.model_name == "qwen-vl" else batch['edit_outer_image'], 
+                        params=params
+                    ).logits
+                    results = multiclass_log_probs(logits, batch['edit_outer_image']['labels'])
+                    self.valid_m_gen(results["pred_ids"], results["targ_ids"])
+                    self.log("m_gen", self.valid_m_gen, on_step=False, on_epoch=True, prog_bar=True)
+                    logits = None
+                    results = None
+
+                    base_logits = self.model.eval()(batch["loc"]['inputs'] if self.hparams.model_name == "qwen-vl" else batch['loc']).logits
+                    base_logits_softmax_top_k = torch.topk(torch.nn.functional.softmax(base_logits, dim=-1), k=1, dim=-1).indices
+                    post_base_logits = self.fmodel(batch['loc']['inputs'] if self.hparams.model_name == "qwen-vl" else batch['loc'], params=params).logits
+                    post_base_logits_softmax_top_k = torch.topk(torch.nn.functional.softmax(post_base_logits, dim=-1), k=1, dim=-1).indices
+                    self.valid_t_loc(base_logits_softmax_top_k.view(-1), post_base_logits_softmax_top_k.view(-1))
+                    self.log("t_loc", self.valid_t_loc, on_step=False, on_epoch=True, prog_bar=True)
+                    base_logits = None
+                    post_base_logits = None
                 
-                base_image_logits = self.model.eval()(batch["loc_image"]).logits
-                base_image_logits_softmax_top_k = torch.topk(torch.nn.functional.softmax(base_image_logits, dim=-1), k=10, dim=-1).indices
-                post_image_base_logits = self.fmodel(batch['loc_image'], params=params).logits
-                post_image_base_logits_softmax_top_k = torch.topk(torch.nn.functional.softmax(post_image_base_logits, dim=-1), k=10, dim=-1).indices
-                self.valid_m_loc(base_image_logits_softmax_top_k.view(-1), post_image_base_logits_softmax_top_k.view(-1))
-                self.log("m_loc", self.valid_m_loc, on_step=False, on_epoch=True, prog_bar=True)
+                    base_image_logits = self.model.eval()(batch["loc_image"]['inputs'] if self.hparams.model_name == "qwen-vl" else batch['loc_image']).logits
+                    base_image_logits_softmax_top_k = torch.topk(torch.nn.functional.softmax(base_image_logits, dim=-1), k=10, dim=-1).indices
+                    post_image_base_logits = self.fmodel(batch['loc_image']['inputs'] if self.hparams.model_name == "qwen-vl" else batch['loc_image'], params=params).logits
+                    post_image_base_logits_softmax_top_k = torch.topk(torch.nn.functional.softmax(post_image_base_logits, dim=-1), k=10, dim=-1).indices
+                    self.valid_m_loc(base_image_logits_softmax_top_k.view(-1), post_image_base_logits_softmax_top_k.view(-1))
+                    self.log("m_loc", self.valid_m_loc, on_step=False, on_epoch=True, prog_bar=True)
+                    base_logits = None
+                    post_base_logits = None
                 
-                port = batch['port'][0]
-                logits = self.fmodel(port, params=params).logits
-                results = multiclass_log_probs(logits, port['labels'])
-                self.valid_port(results["pred_ids"], results["targ_ids"])
-                self.log("port", self.valid_port, on_step=False, on_epoch=True, prog_bar=True)
+                    port = batch['port'][0]
+                    logits = self.fmodel(port['inputs'] if self.hparams.model_name == "qwen-vl" else port, params=params).logits
+                    results = multiclass_log_probs(logits, port['labels'])
+                    self.valid_port(results["pred_ids"], results["targ_ids"])
+                    self.log("port", self.valid_port, on_step=False, on_epoch=True, prog_bar=True)
 
                 # edit_inputs = batch['edit_inner']['text_input']
                 # port_inputs = batch['port'][0]['text_input']
@@ -199,6 +316,7 @@ class MLLM_KE(LightningModule):
                 #     'port_pred_ids': port_pred_ids,
                 #     'port_targ_ids': port_targ_ids
                 # })
+        self.fmodel = None
 
     def on_validation_epoch_end(self) -> None:
         self.fmodel = None
