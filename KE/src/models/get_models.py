@@ -56,7 +56,7 @@ def get_model(model_name, device=None):
 
     elif "owl2" in model_name.lower():
         from .mPLUG_Owl2.mplug_owl2.model.builder import load_pretrained_model
-        from ..trainer.mPLUG_Owl2.mplug_owl2.model.modeling_mplug_owl2 import replace_llama_modality_adaptive
+        from .mPLUG_Owl2.mplug_owl2.model.modeling_mplug_owl2 import replace_llama_modality_adaptive
         replace_llama_modality_adaptive()
         tokenizer , model, _, _ = load_pretrained_model(model_name, None, 'mplug_owl2', load_8bit=False, load_4bit=False)
         for param in model.parameters():
