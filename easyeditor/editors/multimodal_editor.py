@@ -103,6 +103,8 @@ class MultimodalEditor:
 
             elif "owl-2" in hparams.model_name.lower():
                 from ..trainer.mPLUG_Owl2.mplug_owl2.model.builder import load_pretrained_model
+                from ..trainer.mPLUG_Owl2.mplug_owl2.model.modeling_mplug_owl2 import replace_llama_modality_adaptive
+                replace_llama_modality_adaptive()
                 tokenizer , model, _, _ = load_pretrained_model(hparams.name, None, 'mplug_owl2', load_8bit=False, load_4bit=False, device=f"cuda:{hparams.device}")
                 for param in model.parameters():
                     param.requires_grad = True
