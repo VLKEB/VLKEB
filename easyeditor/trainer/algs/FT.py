@@ -66,7 +66,7 @@ class FT(EditableModel):
         if self.save_weight is not None:
             self.model.load_state_dict(self.save_weight, strict=False)
         self.model.train()
-        if self.config.inner_params[0] in ['Qformer', 'mm_projector']:
+        if self.config.inner_params[0] in ['Qformer', 'mm_projector', 'vision_model']:
 
             weights = {
                 n: p
@@ -123,10 +123,6 @@ class FT(EditableModel):
                 
                 opt.step()
         elif "owl-2" in self.config.model_name.lower():
-            # for p in pset:
-            #     for param in self.model.parameters():
-            #         if p == param:
-            #             param.requires_grad = True
             pbar = trange(self.config.num_steps, ncols=120)
             for it in pbar:
                 opt.zero_grad()

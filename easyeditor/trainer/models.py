@@ -172,7 +172,7 @@ def get_model(config):
     param_names = [n for n, _ in model.named_parameters()]
     bad_inner_params = [p for p in config.inner_params if p not in param_names]
     if len(bad_inner_params) != 0:
-        if config.inner_params[0] not in ['Qformer', 'mm_projector']:
+        if config.inner_params[0] not in ['Qformer', 'mm_projector', 'vision_model']:
             raise ValueError(
                 f"Params {bad_inner_params} do not exist in model of type {type(model)}."
             )

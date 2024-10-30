@@ -434,8 +434,8 @@ def test_FT_Owl2():
     )
     trainer.run()
 
-def test_FT_Owl2_ViT():
-    hparams = FTMultimodalHparams.from_hparams('hparams/FT/owl2_vit.yaml')
+def test_FT_Owl2_Visual():
+    hparams = FTMultimodalHparams.from_hparams('hparams/FT/owl2_visual.yaml')
     eval_ds = CaptionDataset(eval_json_path, config=hparams, hop=hop)
     trainer = MultimodalTrainer(
         config=hparams,

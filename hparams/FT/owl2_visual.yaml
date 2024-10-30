@@ -8,10 +8,7 @@ model_class: owl-2
 tokenizer_class: LlamaTokenizer
 tokenizer_name: hugging_cache/mplug-owl2-llama2-7b 
 inner_params:
-- model.vision_model.encoder.layers.23.mlp.fc1.weight
-- model.vision_model.encoder.layers.23.mlp.fc1.bias
-- model.vision_model.encoder.layers.23.mlp.fc2.weight
-- model.vision_model.encoder.layers.23.mlp.fc2.bias
+- vision_model
 
 # Method
 alg: ft
