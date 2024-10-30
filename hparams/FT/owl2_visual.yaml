@@ -12,10 +12,10 @@ inner_params:
 
 # Method
 alg: ft
-num_steps: 30
+num_steps: 25
 lr: 1e-6
-edit_lr: 1e-5
-lr_lr: 2e-3
+edit_lr: 1e-3
+lr_lr: 1e-4
 lr_scale: 1.0
 weight_decay: 0
 seed: 42
